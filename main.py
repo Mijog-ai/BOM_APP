@@ -11,7 +11,7 @@ def findInfo5(itemNo):
         conn = pyodbc.connect(ConnStringXAL())
 
         query = """
-                SELECT B407SBM_INL.SCRIPTNUM AS 'Pos.', STOCKBILLMAT.CHILDITEMNO AS 'Num. / No.', STOCKTABLE.ITEMNAME AS 'Bezeichnung', TEXTS.TXT1 AS 'Name', STOCKBILLMAT.QTYTURNOVR AS 'Qty', STOCKBILLMAT.POSITION, \
+                SELECT B407SBM_INL.SCRIPTNUM AS 'Pos.', STOCKBILLMAT.CHILDITEMNO AS 'Num. / No.',STOCKBILLMAT.BILLTYPE As 'Billtype',  STOCKTABLE.ITEMNAME AS 'Bezeichnung', TEXTS.TXT1 AS 'Name', STOCKBILLMAT.QTYTURNOVR AS 'Qty', STOCKBILLMAT.POSITION, \
                        STOCKTABLE_1.ITEMNUMBER, \
                        STOCKTABLE_1.ITEMNAME, \
                        TEXTS_1.TXT1
@@ -67,11 +67,11 @@ def findInfo5(itemNo):
 # --- Usage ---
 if __name__ == "__main__":
     # Exact match
-    item_number = "YOUR_ITEM_NUMBER"
+    item_number = "7956271.00"
     results = findInfo5(item_number)
 
     # Wildcard search (LIKE pattern)
-    # results = findInfo5("ITEM123%")   # starts with
-    # results = findInfo5("%ITEM123%")  # contains
+    results = findInfo5("ITEM123%")   # starts with
+    results = findInfo5("%ITEM123%")  # contains
 
     print(f"\nTotal records found: {len(results)}")
