@@ -1,5 +1,5 @@
 PHASE 1 — DATABASE DISCOVERY RESULTS
-Generated : 2026-03-03 15:41:12
+Generated : 2026-03-03 15:49:35
 Server    : DEBLNSVERP01  /  Database: XALinl
 ======================================================================
 
@@ -10,7 +10,7 @@ Server    : DEBLNSVERP01  /  Database: XALinl
 
 TableName                                    RowCount
 ------------------------------------------------------
-MRPIIPRIP                                   7,324,010
+MRPIIPRIP                                   7,324,078
 STOCKTRANS                                  6,220,997
 H_COS_TO_XAL                                5,597,350
 NOTES                                       4,735,418
@@ -19,10 +19,10 @@ B49292LOGROWINFO                            3,578,417
 MRPCOSTESTIMATE                             3,568,846
 MRPTRANS                                    2,956,787
 B304TXTINH                                  1,727,525
-LEDTRANS                                    1,631,000
-B418TABLEEXP                                1,191,228
+LEDTRANS                                    1,631,004
+B418TABLEEXP                                1,191,232
 B45884LOGROWINFO                            1,067,954
-MRPCONSUMP                                    928,683
+MRPCONSUMP                                    928,684
 B584PRCHWORKSH                                814,351
 B304TXTZUO                                    576,744
 MRPROUTE                                      495,146
@@ -30,7 +30,7 @@ B45884LOGINFOTXT                              437,317
 B465TABLEEXP                                  435,696
 B49292LOGINFOTXT                              429,009
 NOTESGLOBAL                                   405,612
-B307DTRANS                                    390,577
+B307DTRANS                                    390,579
 STOCKBILLMAT                                  369,637
 CREDSETTLEMENT                                349,250
 SPECIFICATION                                 337,018
@@ -41,28 +41,28 @@ B1097PURCHTRAEXT                              284,112
 CREDINVTRANS                                  280,966
 CREDTRANS                                     270,956
 LEDBALANCESDIM                                248,858
-B450ADDRESS                                   231,234
+B450ADDRESS                                   231,237
 B407SBM_INL                                   227,152
 LEDBUDGET                                     192,710
 CREDDLVJOUR                                   183,760
-DEBINVTRANS                                   169,508
-DEBDLVTRANS                                   167,334
+DEBINVTRANS                                   169,509
+DEBDLVTRANS                                   167,335
 SALESTRANS                                    167,064
 CREDINVJOUR                                   165,773
 DEBSETTLEMENT                                 165,524
-MRPCAPRES                                     159,602
+MRPCAPRES                                     159,601
 PRICEDISC                                     152,891
 MRPTABLE                                      132,504
-B450FSALESTRANS                               120,656
-DEBTRANS                                      113,032
+B450FSALESTRANS                               120,661
+DEBTRANS                                      113,033
 PURCHTABLE                                    112,098
 XALTMP                                         96,199
 BATCH                                          92,050
 CALENDAR                                       90,336
-DEBINVJOUR                                     84,630
-DEBDLVJOUR                                     81,759
+DEBINVJOUR                                     84,631
+DEBDLVJOUR                                     81,760
 B438QUOTTRANS                                  81,491
-B450FSALESTABLE                                76,964
+B450FSALESTABLE                                76,965
 STOCKSUM                                       69,472
 SALESTABLE                                     64,049
 B397STOCK_INL                                  60,209
@@ -3847,7 +3847,7 @@ Dataset: INL
 ======================================================================
   ALL TABLES (sorted by row count)
 ======================================================================
-  MRPIIPRIP                                   7,324,010
+  MRPIIPRIP                                   7,324,078
   STOCKTRANS                                  6,220,997
   H_COS_TO_XAL                                5,597,350
   NOTES                                       4,735,418
@@ -3856,10 +3856,10 @@ Dataset: INL
   MRPCOSTESTIMATE                             3,568,846
   MRPTRANS                                    2,956,787
   B304TXTINH                                  1,727,525
-  LEDTRANS                                    1,631,000
-  B418TABLEEXP                                1,191,228
+  LEDTRANS                                    1,631,004
+  B418TABLEEXP                                1,191,232
   B45884LOGROWINFO                            1,067,954
-  MRPCONSUMP                                    928,683
+  MRPCONSUMP                                    928,684
   B584PRCHWORKSH                                814,351
   B304TXTZUO                                    576,744
   MRPROUTE                                      495,146
@@ -3867,7 +3867,7 @@ Dataset: INL
   B465TABLEEXP                                  435,696
   B49292LOGINFOTXT                              429,009
   NOTESGLOBAL                                   405,612
-  B307DTRANS                                    390,577
+  B307DTRANS                                    390,579
   STOCKBILLMAT                                  369,637
   CREDSETTLEMENT                                349,250
   SPECIFICATION                                 337,018
@@ -3878,28 +3878,28 @@ Dataset: INL
   CREDINVTRANS                                  280,966
   CREDTRANS                                     270,956
   LEDBALANCESDIM                                248,858
-  B450ADDRESS                                   231,234
+  B450ADDRESS                                   231,237
   B407SBM_INL                                   227,152
   LEDBUDGET                                     192,710
   CREDDLVJOUR                                   183,760
-  DEBINVTRANS                                   169,508
-  DEBDLVTRANS                                   167,334
+  DEBINVTRANS                                   169,509
+  DEBDLVTRANS                                   167,335
   SALESTRANS                                    167,064
   CREDINVJOUR                                   165,773
   DEBSETTLEMENT                                 165,524
-  MRPCAPRES                                     159,602
+  MRPCAPRES                                     159,601
   PRICEDISC                                     152,891
   MRPTABLE                                      132,504
-  B450FSALESTRANS                               120,656
-  DEBTRANS                                      113,032
+  B450FSALESTRANS                               120,661
+  DEBTRANS                                      113,033
   PURCHTABLE                                    112,098
   XALTMP                                         96,199
   BATCH                                          92,050
   CALENDAR                                       90,336
-  DEBINVJOUR                                     84,630
-  DEBDLVJOUR                                     81,759
+  DEBINVJOUR                                     84,631
+  DEBDLVJOUR                                     81,760
   B438QUOTTRANS                                  81,491
-  B450FSALESTABLE                                76,964
+  B450FSALESTABLE                                76,965
   STOCKSUM                                       69,472
   SALESTABLE                                     64,049
   B397STOCK_INL                                  60,209
