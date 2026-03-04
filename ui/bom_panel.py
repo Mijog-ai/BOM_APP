@@ -3,7 +3,7 @@ import decimal
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox,
+    QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox,
     QTreeWidget, QTreeWidgetItem, QFileDialog, QMessageBox
 )
 from PyQt6.QtCore import Qt
@@ -81,12 +81,20 @@ class BOMPanel(QWidget):
         )
         self._btn_export.clicked.connect(self._export_json)
 
+        self._chk_unique = QCheckBox("Skip duplicate rows")
+        self._chk_unique.setChecked(True)
+        self._chk_unique.setToolTip(
+            "Checked  → hide rows where ScriptNum + ItemNo appear more than once\n"
+            "Unchecked → show every raw row returned by the query"
+        )
+
         top.addWidget(QLabel("Item No:"))
         top.addWidget(self._item_input, 1)
         top.addWidget(QLabel("Dataset:"))
         top.addWidget(self._dataset_cb)
         top.addWidget(self._btn_load)
         top.addWidget(self._btn_clear)
+        top.addWidget(self._chk_unique)
         top.addWidget(self._btn_export)
         layout.addLayout(top)
 
@@ -126,11 +134,12 @@ class BOMPanel(QWidget):
         self._active_loaders.clear()
         self._status.setText(f"Loading BOM for  {item_no} ...")
 
-        # Root node — description filled in when data arrives
+        # Root node — has_bom=False so NO placeholder is added.
+        # A placeholder would trigger _on_item_expanded → second loader → doubled rows.
         root = self._make_node(
             parent=self._tree,
             pos='', item_no=item_no,
-            qty='', has_bom=True,
+            qty='', has_bom=False,
             description='Loading...', full_name=''
         )
         root.setExpanded(True)
@@ -169,6 +178,20 @@ class BOMPanel(QWidget):
         parent_item.setText(4, str(first.get('FatherDescription') or ''))
         parent_item.setText(5, str(first.get('FatherFullName')    or ''))
 
+        # ── Deduplicate by (ScriptNum, ItemNo) if checkbox is checked ──
+        if self._chk_unique.isChecked():
+            seen = set()
+            unique_rows = []
+            for row in rows:
+                key = (str(row.get('ScriptNum') or ''), str(row.get('ItemNo') or ''))
+                if key not in seen:
+                    seen.add(key)
+                    unique_rows.append(row)
+            dup_count = len(rows) - len(unique_rows)
+            rows = unique_rows
+        else:
+            dup_count = 0
+
         for row in rows:
             has_bom = (row.get('BillType') == 1)
 
@@ -187,9 +210,10 @@ class BOMPanel(QWidget):
                 for col in range(self._tree.columnCount()):
                     child.setForeground(col, QColor('#1565C0'))  # blue
 
+        dup_str = f"  ({dup_count} duplicate(s) hidden)" if dup_count else ""
         self._status.setText(
             f"{parent_item.data(0, _ROLE_ITEM_NO)}  —  "
-            f"{len(rows)} child item(s) loaded"
+            f"{len(rows)} child item(s) loaded{dup_str}"
         )
 
     def _on_error(self, msg: str):

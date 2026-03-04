@@ -61,11 +61,12 @@ class SearchParamLoader(QThread):
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT DISTINCT
+                SELECT
                     b.SCRIPTNUM,
                     b.FATHERITEMNUM,
                     st.ITEMNAME,
-                    tx.TXT1
+                    tx.TXT1,
+                    MIN(b.LASTCHANGED) AS created_date
                 FROM XALinl.dbo.B407SBM_INL b
                 JOIN XALinl.dbo.STOCKTABLE  st
                     ON  st.DATASET    = b.DATASET
@@ -74,21 +75,23 @@ class SearchParamLoader(QThread):
                     ON  tx.DATASET = b.DATASET
                     AND tx.TXTID   = b.FATHERITEMNUM
                 WHERE b.DATASET = ?
+                GROUP BY b.SCRIPTNUM, b.FATHERITEMNUM, st.ITEMNAME, tx.TXT1
             """, (self.dataset,))
 
             scripts = []
             for row in cursor.fetchall():
-                scriptnum, fatheritem, itemname, txt1 = row
+                scriptnum, fatheritem, itemname, txt1, created_date = row
                 txt1_clean = str(txt1 or '').strip()
                 family, size, type_code = parse_txt1(txt1_clean)
                 scripts.append({
-                    'scriptnum' : scriptnum,
-                    'father'    : str(fatheritem or '').strip(),
-                    'itemname'  : str(itemname   or '').strip(),
-                    'txt1'      : txt1_clean,
-                    'family'    : family,
-                    'size'      : size,
-                    'type_code' : type_code,
+                    'scriptnum'    : scriptnum,
+                    'father'       : str(fatheritem or '').strip(),
+                    'itemname'     : str(itemname   or '').strip(),
+                    'txt1'         : txt1_clean,
+                    'family'       : family,
+                    'size'         : size,
+                    'type_code'    : type_code,
+                    'created_date' : created_date,   # datetime or None
                 })
 
             conn.close()

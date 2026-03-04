@@ -11,6 +11,7 @@ from ui.data_panel    import DataPanel
 from ui.detail_panel  import DetailPanel
 from ui.bom_panel     import BOMPanel
 from ui.search_panel  import SearchPanel
+from ui.stock_panel   import StockPanel
 
 
 class MainWindow(QMainWindow):
@@ -51,6 +52,11 @@ class MainWindow(QMainWindow):
         # --- Tab 3: Search Space! ---
         self._search_panel = SearchPanel()
         tabs.addTab(self._search_panel, "Search Space!")
+
+        # --- Tab 4: Stocks ---
+        # Pass bom_panel so "Open BOM" button can load directly into Tab 2
+        self._stock_panel = StockPanel(bom_panel=self._bom_panel)
+        tabs.addTab(self._stock_panel, "Stocks")
 
         # Wire Table Explorer signals
         self._tree.table_selected.connect(self._on_table_selected)
