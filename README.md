@@ -31,15 +31,7 @@ with a primary focus on Bill of Materials (BOM) hierarchies.
 
 ---
 
-## Phase 1 — COMPLETED (Database Discovery)
-
-### What was done
-- All 7 discovery scripts are in `tests/`
-- Full output saved to `phase1_results.txt`
-- Full column-level DB map saved to `tests/db_map.txt`
-- Runner script: `run_phase1.py`
-
-### Key Database Findings
+## Database Reference
 
 **Every table in XALinl has these 3 standard columns first:**
 ```
@@ -114,7 +106,7 @@ FATHERITEMNUM  -- links to STOCKBILLMAT.FATHERITEMNO
 LINENO_        -- links to STOCKBILLMAT.LINENO_
 ```
 
-**The working JOIN (from main.py — already tested):**
+**The working BOM JOIN (tested):**
 ```sql
 SELECT
     B407SBM_INL.SCRIPTNUM        AS 'Pos.',
@@ -149,166 +141,7 @@ ORDER BY STOCKBILLMAT.POSITION
 
 ---
 
-## Phase 2 — PyQt6 GUI (TO BUILD)
-
-### Overall Layout
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  MENUBAR: File | View | Export                                   │
-├───────────────┬─────────────────────────┬───────────────────────┤
-│  LEFT PANEL   │   CENTER PANEL          │   RIGHT PANEL         │
-│  QTreeWidget  │   QTableView            │   QScrollArea         │
-│               │                         │                       │
-│ 📁 XALinl     │  [Search]  [Dataset ▼]  │  Selected Row:        │
-│  ├ STOCK      │                         │  ┌─────────────────┐  │
-│  ├ MRP        │  Col1  Col2  Col3 ...   │  │ Field : Value   │  │
-│  ├ SALES      │  ─────────────────────  │  │ Field : Value   │  │
-│  ├ PURCH      │  val   val   val   ...  │  └─────────────────┘  │
-│  ├ LED        │  val   val   val   ...  │                       │
-│  └ ...        │                         │  [Copy Row]           │
-│               │  [◀ Prev] 1 / N [Next ▶]│                       │
-├───────────────┴─────────────────────────┴───────────────────────┤
-│  STATUS BAR:  Connected │ STOCKTABLE │ 60,158 rows │ Page 1/121  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### PyQt6 Components
-
-| Panel | Class | Notes |
-|---|---|---|
-| Window | `QMainWindow` | Main container |
-| 3-panel split | `QSplitter` (horizontal) | Resizable panels |
-| Left tree | `QTreeWidget` | Module → Table hierarchy |
-| Center table | `QTableView` | Data grid |
-| Table model | `QStandardItemModel` | Holds the data |
-| Filter proxy | `QSortFilterProxyModel` | Client-side search |
-| Search bar | `QLineEdit` | Filters proxy model |
-| Dataset dropdown | `QComboBox` | Switch INL / KON |
-| Pagination | `QPushButton` + `QLabel` | Prev/Next page |
-| Right panel | `QFormLayout` in `QScrollArea` | Row detail view |
-| Status bar | `QStatusBar` | Connection + counts |
-| DB thread | `QThread` + `pyqtSignal` | Never block UI |
-| Menu bar | `QMenuBar` | File/Export actions |
-
-### Data Flow (CRITICAL — always use QThread)
-
-```
-User clicks table name in Tree
-        │
-        ▼
-Emit signal → TableLoaderThread starts
-  └── SQL: SELECT TOP 500 * FROM {table} WHERE DATASET = ?
-  └── Uses OFFSET/FETCH NEXT for pagination
-        │
-        ▼
-Thread emits results_ready(data, columns) signal
-        │
-        ▼
-Main thread slot receives signal
-  └── Populates QStandardItemModel
-  └── QTableView auto-refreshes
-  └── Status bar updates
-```
-
-### Pagination SQL (use this pattern)
-```sql
-SELECT * FROM {table}
-WHERE DATASET = 'INL'
-ORDER BY ROWNUMBER
-OFFSET {page * page_size} ROWS
-FETCH NEXT {page_size} ROWS ONLY
-```
-Use `page_size = 500`. Pre-query `COUNT(*)` once per table selection.
-
----
-
-## Phase 3 — Suggested Class Structure
-
-```
-BOM_APP/
-├── main.py                  (entry point — QApplication + MainWindow)
-├── db/
-│   ├── connection.py        (DatabaseConnection class — pyodbc wrapper)
-│   ├── schema_loader.py     (QThread — fetches table list + row counts)
-│   └── table_loader.py      (QThread — fetches paginated table data)
-├── ui/
-│   ├── main_window.py       (MainWindow(QMainWindow))
-│   ├── tree_panel.py        (TableTreeWidget(QTreeWidget))
-│   ├── data_panel.py        (DataTableView — QTableView + model + proxy)
-│   ├── detail_panel.py      (RowDetailPanel — QScrollArea + QFormLayout)
-│   └── status_bar.py        (AppStatusBar(QStatusBar))
-├── tests/                   (Phase 1 discovery scripts — keep for reference)
-└── phase1_results.txt       (Phase 1 output — reference)
-```
-
-### Class Responsibilities
-
-**`DatabaseConnection`** (`db/connection.py`)
-- Holds one `pyodbc` connection
-- Methods: `connect()`, `disconnect()`, `is_alive()`, `reconnect()`
-- Exposes connection string (read from config, not hardcoded)
-
-**`SchemaLoader(QThread)`** (`db/schema_loader.py`)
-- Signal: `schema_ready(dict)` — emits `{module: [table_name, ...]}`
-- Runs on startup, queries INFORMATION_SCHEMA + sys.partitions
-- Groups tables by prefix into modules
-
-**`TableLoader(QThread)`** (`db/table_loader.py`)
-- Signal: `data_ready(list[dict], list[str])` — rows + column names
-- Signal: `count_ready(int)` — total row count
-- Takes: table_name, dataset, page, page_size
-- Runs paginated SELECT query
-
-**`MainWindow(QMainWindow)`** (`ui/main_window.py`)
-- Owns all panels via `QSplitter`
-- Connects signals between tree → loader → table view
-- Manages status bar updates
-
----
-
-## Phase 4 — BOM-Specific Feature (the real purpose)
-
-Once the generic table explorer works, add the BOM tree viewer:
-
-### BOM Hierarchy View
-- User types/searches an item number (e.g. `7956271.00`)
-- App runs the working JOIN query from main.py
-- Results show in a **tree structure** (not flat table):
-  ```
-  7956271.00 — Assembly XYZ
-  ├── 1001.00  (Qty: 2)  — Bracket A
-  ├── 1002.00  (Qty: 1)  — Motor Unit
-  │    ├── 2001.00 (Qty: 4) — Bolt M8
-  │    └── 2002.00 (Qty: 1) — Housing
-  └── 1003.00  (Qty: 1)  — Cover Plate
-  ```
-- Use `QTreeWidget` with columns: Pos | Item No | Qty | Description
-- "Drill down" button — click a child item to load ITS BOM
-
-### Widget for BOM: `QTreeWidget` columns
-```
-Pos. | Item Number | Billtype | Description | Name | Qty
-```
-
----
-
-## Phase 5 — Features Build Order
-
-1. DB connection class + config file (move credentials out of code)
-2. Schema loader thread → populate left tree with modules/tables
-3. Table viewer — click table → load 500 rows → display in QTableView
-4. Search/filter bar using QSortFilterProxyModel
-5. Pagination (Prev/Next page buttons)
-6. Row detail panel (right side)
-7. Dataset dropdown (INL / KON switcher)
-8. Export to CSV
-9. **BOM search tab** — item number input → BOM tree viewer
-10. BOM drill-down (recursive child loading)
-
----
-
-## Phase 6 — Important Implementation Notes
+## Implementation Notes
 
 ### SQL Server Compatibility (Pre-2017)
 - `STRING_AGG` → NOT available. Use `STUFF + FOR XML PATH`
@@ -335,21 +168,26 @@ Pos. | Item Number | Billtype | Description | Name | Qty
 - Always use `QThread` + `pyqtSignal` for all DB calls
 - Pattern: Worker thread emits signal → main thread slot updates UI
 
+### Outstanding TODOs
+- Move credentials out of code into a config file
+
 ---
 
 ## File Reference
 
 | File | Purpose |
 |---|---|
-| `main.py` | Original BOM query function (reference implementation) |
-| `run_phase1.py` | Runs all discovery steps |
-| `phase1_results.txt` | Full Phase 1 output |
+| `app.py` | Entry point — QApplication + MainWindow |
+| `db/connection.py` | DatabaseConnection class — pyodbc wrapper |
+| `db/schema_loader.py` | QThread — fetches table list + row counts |
+| `db/table_loader.py` | QThread — fetches paginated table data |
+| `db/bom_loader.py` | QThread — BOM JOIN query + recursive exporter |
+| `db/search_loader.py` | QThread — parses TXT1 into search parameters |
+| `db/stock_loader.py` | QThread — stock search filters + query |
+| `ui/main_window.py` | MainWindow — tab orchestration, schema, CSV export |
+| `ui/bom_panel.py` | Tab 2 — lazy BOM tree + JSON export |
+| `ui/search_panel.py` | Tab 3 — cascading Family→Size→Type filter |
+| `ui/stock_panel.py` | Tab 4 — inventory search + detail + BOM link |
 | `tests/db_map.txt` | Complete column map of all tables |
-| `tests/db_connection.py` | Shared pyodbc connection |
-| `tests/step1_big_picture.py` | Table list + row counts |
-| `tests/step2_prefix_groups.py` | Module grouping |
-| `tests/step3_dataset_column.py` | Dataset distribution |
-| `tests/step4_key_table_columns.py` | Column inspector |
-| `tests/step5_sample_data.py` | Raw data sampler |
-| `tests/step6_foreign_keys.py` | FK + logical join finder |
-| `tests/step7_document.py` | DB map generator |
+| `Test_setup_data/phase1_results.txt` | Full Phase 1 DB discovery output |
+| `Test_setup_data/db_map.txt` | DB map (moved from tests/) |
