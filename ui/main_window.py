@@ -10,6 +10,7 @@ from ui.tree_panel    import TableTreeWidget
 from ui.data_panel    import DataPanel
 from ui.detail_panel  import DetailPanel
 from ui.bom_panel     import BOMPanel
+from ui.search_panel  import SearchPanel
 
 
 class MainWindow(QMainWindow):
@@ -46,6 +47,10 @@ class MainWindow(QMainWindow):
         # --- Tab 2: BOM Tree ---
         self._bom_panel = BOMPanel()
         tabs.addTab(self._bom_panel, "BOM Tree")
+
+        # --- Tab 3: Search Space! ---
+        self._search_panel = SearchPanel()
+        tabs.addTab(self._search_panel, "Search Space!")
 
         # Wire Table Explorer signals
         self._tree.table_selected.connect(self._on_table_selected)

@@ -88,7 +88,7 @@ class BOMExporter(QThread):
                 self.progress.emit(f"Traversed {self._node_count} items ...")
 
             node = {
-                'pos':         _s(row.get('Pos')),
+                'script_num':  _s(row.get('ScriptNum')),
                 'item_no':     item_no,
                 'qty':         _f(row.get('Qty')),
                 'billtype':    int(row.get('BillType') or 0),
@@ -117,7 +117,7 @@ class BOMExporter(QThread):
         """Return all direct children of item_no as a list of dicts."""
         cursor.execute("""
             SELECT
-                B407SBM_INL.SCRIPTNUM           AS Pos,
+                B407SBM_INL.SCRIPTNUM           AS ScriptNum,
                 STOCKBILLMAT.CHILDITEMNO         AS ItemNo,
                 STOCKBILLMAT.BILLTYPE            AS BillType,
                 STOCKBILLMAT.QTYTURNOVR          AS Qty,

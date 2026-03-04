@@ -97,7 +97,7 @@ class BOMPanel(QWidget):
         # --- Tree ---
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels([
-            'Pos', 'Item No', 'Qty', 'Has BOM', 'Description', 'Full Name'
+            'ScriptNum', 'Item No', 'Qty', 'Has BOM', 'Description', 'Full Name'
         ])
         self._tree.setColumnWidth(0, 55)
         self._tree.setColumnWidth(1, 160)
@@ -174,7 +174,7 @@ class BOMPanel(QWidget):
 
             child = self._make_node(
                 parent=parent_item,
-                pos=str(row.get('Pos')         or ''),
+                pos=str(row.get('ScriptNum')   or ''),
                 item_no=str(row.get('ItemNo')  or ''),
                 qty=str(row.get('Qty')         or ''),
                 has_bom=has_bom,
@@ -301,7 +301,7 @@ class BOMPanel(QWidget):
         has_bom = node.get('has_bom', False)
         children = node.get('children', [])
 
-        item.setText(0, '' if is_root else str(node.get('pos') or ''))
+        item.setText(0, '' if is_root else str(node.get('script_num') or ''))
         item.setText(1, item_no)
         item.setText(2, '' if is_root else str(node.get('qty') or ''))
         item.setText(3, 'Yes' if (has_bom or children) else 'No')
