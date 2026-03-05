@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QThread, pyqtSignal
-from db.connection import get_connection
+from db.connection import get_connection, IS_SQLITE
 
 # Order matters — more specific prefixes must come before shorter ones
 MODULE_PREFIXES = [
@@ -56,13 +56,18 @@ class SchemaLoader(QThread):
             conn   = get_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT t.NAME AS TableName, p.rows AS [RowCount]
-                FROM sys.tables t
-                JOIN sys.partitions p ON t.object_id = p.object_id
-                WHERE p.index_id IN (0, 1)
-                ORDER BY t.NAME
-            """)
+            if IS_SQLITE:
+                cursor.execute(
+                    "SELECT name, 0 FROM sqlite_master WHERE type='table' ORDER BY name"
+                )
+            else:
+                cursor.execute("""
+                    SELECT t.NAME AS TableName, p.rows AS [RowCount]
+                    FROM sys.tables t
+                    JOIN sys.partitions p ON t.object_id = p.object_id
+                    WHERE p.index_id IN (0, 1)
+                    ORDER BY t.NAME
+                """)
             rows = cursor.fetchall()
             conn.close()
 

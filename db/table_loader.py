@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QThread, pyqtSignal
-from db.connection import get_connection
+from db.connection import get_connection, IS_SQLITE
 
 
 class TableLoader(QThread):
@@ -19,11 +19,15 @@ class TableLoader(QThread):
         self.load_count  = load_count
 
     def _has_column(self, cursor, column: str) -> bool:
-        cursor.execute("""
-            SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_NAME = ? AND COLUMN_NAME = ?
-        """, (self.table_name, column))
-        return cursor.fetchone()[0] > 0
+        if IS_SQLITE:
+            cursor.execute(f"PRAGMA table_info({self.table_name})")
+            return any(row[1] == column for row in cursor.fetchall())
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = ? AND COLUMN_NAME = ?
+            """, (self.table_name, column))
+            return cursor.fetchone()[0] > 0
 
     def run(self):
         try:
@@ -48,19 +52,34 @@ class TableLoader(QThread):
             # --- Paginated data ---
             offset = self.page * self.page_size
 
-            if has_dataset:
-                cursor.execute(f"""
-                    SELECT * FROM {self.table_name}
-                    WHERE DATASET = ?
-                    ORDER BY {order_col}
-                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                """, (self.dataset, offset, self.page_size))
+            if IS_SQLITE:
+                if has_dataset:
+                    cursor.execute(f"""
+                        SELECT * FROM {self.table_name}
+                        WHERE DATASET = ?
+                        ORDER BY {order_col}
+                        LIMIT ? OFFSET ?
+                    """, (self.dataset, self.page_size, offset))
+                else:
+                    cursor.execute(f"""
+                        SELECT * FROM {self.table_name}
+                        ORDER BY {order_col}
+                        LIMIT ? OFFSET ?
+                    """, (self.page_size, offset))
             else:
-                cursor.execute(f"""
-                    SELECT * FROM {self.table_name}
-                    ORDER BY {order_col}
-                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                """, (offset, self.page_size))
+                if has_dataset:
+                    cursor.execute(f"""
+                        SELECT * FROM {self.table_name}
+                        WHERE DATASET = ?
+                        ORDER BY {order_col}
+                        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                    """, (self.dataset, offset, self.page_size))
+                else:
+                    cursor.execute(f"""
+                        SELECT * FROM {self.table_name}
+                        ORDER BY {order_col}
+                        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                    """, (offset, self.page_size))
 
             columns = [col[0] for col in cursor.description]
             rows    = [list(row) for row in cursor.fetchall()]
