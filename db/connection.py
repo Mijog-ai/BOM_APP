@@ -25,7 +25,7 @@ else:
     import sqlite3
     import os
 
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "xal_local.db")
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "database", "xal_local1.db")
 
     print(f"SQL Server unavailable — using local DB: {DB_PATH}")
 

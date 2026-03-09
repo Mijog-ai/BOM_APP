@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
 
         # --- Tab 3: Search Space! ---
         self._search_panel = SearchPanel()
-        tabs.addTab(self._search_panel, "Search Space!")
+        tabs.addTab(self._search_panel, "Compare BOM")
 
         # --- Tab 4: Stocks ---
         # Pass bom_panel so "Open BOM" button can load directly into Tab 2

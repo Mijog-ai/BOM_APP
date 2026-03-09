@@ -1,7 +1,9 @@
 pyodbc==5.3.0
 PyQt6
+openpyxl
+reportlab
 
-# ML
+# ML (not included in EXE build — see requirements_app.txt)
 transformers==5.2.0
 accelerate==1.12.0
 bitsandbytes==0.49.2

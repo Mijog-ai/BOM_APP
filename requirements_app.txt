@@ -1,0 +1,7 @@
+# Minimal requirements for the BOM Explorer app (used by build.bat for EXE creation)
+# Does NOT include the heavy ML packages
+
+pyodbc==5.3.0
+PyQt6
+openpyxl
+reportlab
