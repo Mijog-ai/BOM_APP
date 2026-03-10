@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QComboBox, QPushButton, QCheckBox,
+    QLabel, QLineEdit, QComboBox, QPushButton, QCheckBox,
     QListWidget, QListWidgetItem, QSplitter,
     QTreeWidget, QTreeWidgetItem, QFrame, QMenu, QSizePolicy,
 )
@@ -78,16 +78,17 @@ class _BomSlot(QFrame):
         self._chk_unique = QCheckBox("Skip dups")
         self._chk_unique.setChecked(True)
         self._chk_unique.setToolTip(
-            "Checked → hide rows where ScriptNum+ItemNo repeat\n"
+            "Checked → hide rows where Position+ItemNo repeat\n"
             "Unchecked → show every raw row"
         )
 
-        self._lbl_item = QLabel("— empty —")
-        self._lbl_item.setStyleSheet("color: #888888; font-style: italic;")
-        self._lbl_item.setSizePolicy(
+        self._item_input = QLineEdit()
+        self._item_input.setPlaceholderText("type item no. + Enter")
+        self._item_input.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-        self._lbl_item.setToolTip("Currently loaded item number")
+        self._item_input.setToolTip("Type an item number and press Enter to load directly into this slot")
+        self._item_input.returnPressed.connect(self._load_direct)
 
         header.addWidget(self._btn_slot)
         header.addSpacing(4)
@@ -96,7 +97,7 @@ class _BomSlot(QFrame):
         header.addSpacing(6)
         header.addWidget(self._chk_unique)
         header.addSpacing(8)
-        header.addWidget(self._lbl_item)
+        header.addWidget(self._item_input)
         layout.addLayout(header)
 
         # ── Status line ──────────────────────────────────────────────
@@ -107,8 +108,14 @@ class _BomSlot(QFrame):
         # ── BOM tree ─────────────────────────────────────────────────
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels([
-            'Script#', 'Item No', 'Qty', 'Sub-BOM', 'Description', 'Full Name'
+            'Position', 'Item No', 'Qty', 'Sub-BOM', 'Description', 'Full Name'
         ])
+        self._tree.setStyleSheet("""
+            QTreeWidget::item:selected {
+                background-color: #1565C0;
+                color: white;
+            }
+        """)
         self._tree.setColumnWidth(0, 55)
         self._tree.setColumnWidth(1, 155)
         self._tree.setColumnWidth(2, 48)
@@ -147,19 +154,24 @@ class _BomSlot(QFrame):
         self._btn_slot.setText(f"Slot {idx + 1}")
 
     # ── Public API ────────────────────────────────────────────────────
+    def _load_direct(self):
+        item_no = self._item_input.text().strip()
+        if item_no:
+            self.load_item(item_no)
+
     def load_item(self, item_no: str):
         self._tree.clear()
         for loader in self._active_loaders:
             loader.quit()
         self._active_loaders.clear()
 
-        self._lbl_item.setText(item_no)
-        self._lbl_item.setStyleSheet("color: #111111; font-style: normal; font-weight: bold;")
+        self._item_input.setText(item_no)
+        self._item_input.setStyleSheet("color: #111111; font-weight: bold;")
         self._status.setText(f"Loading BOM for  {item_no} …")
 
         root = self._make_node(
             parent=self._tree,
-            script_num='', item_no=item_no, qty='',
+            position='', item_no=item_no, qty='',
             has_bom=False, description='Loading…', full_name=''
         )
         root.setExpanded(True)
@@ -175,8 +187,8 @@ class _BomSlot(QFrame):
             loader.quit()
         self._active_loaders.clear()
         self._tree.clear()
-        self._lbl_item.setText("— empty —")
-        self._lbl_item.setStyleSheet("color: #888888; font-style: italic;")
+        self._item_input.clear()
+        self._item_input.setStyleSheet("")
         self._status.setText("Cleared.")
 
     # ── Lazy expand ───────────────────────────────────────────────────
@@ -206,7 +218,7 @@ class _BomSlot(QFrame):
         if self._chk_unique.isChecked():
             seen, unique_rows = set(), []
             for row in rows:
-                key = (str(row.get('ScriptNum') or ''), str(row.get('ItemNo') or ''))
+                key = (str(row.get('Position') or ''), str(row.get('ItemNo') or ''))
                 if key not in seen:
                     seen.add(key)
                     unique_rows.append(row)
@@ -216,10 +228,10 @@ class _BomSlot(QFrame):
             dup_count = 0
 
         for row in rows:
-            has_bom = (row.get('BillType') == 1)
+            has_bom = (row.get('Artikelart') == 1)
             child   = self._make_node(
                 parent=parent_item,
-                script_num=str(row.get('ScriptNum')    or ''),
+                position=str(row.get('Position')       or ''),
                 item_no=str(row.get('ItemNo')          or ''),
                 qty=str(row.get('Qty')                 or ''),
                 has_bom=has_bom,
@@ -256,10 +268,10 @@ class _BomSlot(QFrame):
         except ValueError:
             pass
 
-    def _make_node(self, parent, script_num, item_no, qty,
+    def _make_node(self, parent, position, item_no, qty,
                    has_bom, description, full_name) -> QTreeWidgetItem:
         node = QTreeWidgetItem(parent)
-        node.setText(0, script_num)
+        node.setText(0, position)
         node.setText(1, item_no)
         node.setText(2, qty)
         node.setText(3, 'Yes' if has_bom else '')
@@ -659,7 +671,7 @@ class SearchPanel(QWidget):
         menu.addSeparator()
 
         for i, slot in enumerate(self._bom_slots):
-            loaded = slot._lbl_item.text()
+            loaded = slot._item_input.text() or "— empty —"
             action = menu.addAction(f"Slot {i + 1}   (current: {loaded})")
             action.setData(i)
 

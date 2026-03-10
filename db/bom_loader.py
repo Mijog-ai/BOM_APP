@@ -29,11 +29,10 @@ class BOMLoader(QThread):
 
             cursor.execute("""
                 SELECT
-                    B407SBM_INL.SCRIPTNUM           AS ScriptNum,
-                    STOCKBILLMAT.CHILDITEMNO         AS ItemNo,
-                    STOCKBILLMAT.BILLTYPE            AS BillType,
-                    STOCKBILLMAT.QTYTURNOVR          AS Qty,
                     STOCKBILLMAT.POSITION            AS Position,
+                    STOCKBILLMAT.CHILDITEMNO         AS ItemNo,
+                    STOCKBILLMAT.QTYTURNOVR          AS Qty,
+                    STOCKTABLE.ITEMTYPE              AS Artikelart,
                     STOCKTABLE.ITEMNAME              AS Description,
                     TEXTS.TXT1                       AS FullName,
                     STOCKTABLE_1.ITEMNUMBER          AS FatherItemNo,

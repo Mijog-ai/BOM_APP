@@ -78,7 +78,7 @@ class BOMPanel(QWidget):
 
         # Export format selector + button
         self._export_fmt = QComboBox()
-        self._export_fmt.addItems(["JSON", "Excel", "PDF"])
+        self._export_fmt.addItems(["JSON", "CSV", "PDF"])
         self._export_fmt.setFixedWidth(65)
         self._export_fmt.setToolTip("Choose export format")
 
@@ -93,7 +93,7 @@ class BOMPanel(QWidget):
         self._chk_unique = QCheckBox("Skip duplicate rows")
         self._chk_unique.setChecked(True)
         self._chk_unique.setToolTip(
-            "Checked  → hide rows where ScriptNum + ItemNo appear more than once\n"
+            "Checked  → hide rows where Position + ItemNo appear more than once\n"
             "Unchecked → show every raw row returned by the query"
         )
 
@@ -115,8 +115,14 @@ class BOMPanel(QWidget):
         # --- Tree ---
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels([
-            'ScriptNum', 'Item No', 'Qty', 'Has BOM', 'Description', 'Full Name'
+            'Position', 'Item No', 'Qty', 'Has BOM', 'Description', 'Full Name'
         ])
+        self._tree.setStyleSheet("""
+            QTreeWidget::item:selected {
+                background-color: #1565C0;
+                color: white;
+            }
+        """)
         self._tree.setColumnWidth(0, 55)
         self._tree.setColumnWidth(1, 160)
         self._tree.setColumnWidth(2, 65)
@@ -187,12 +193,12 @@ class BOMPanel(QWidget):
         parent_item.setText(4, str(first.get('FatherDescription') or ''))
         parent_item.setText(5, str(first.get('FatherFullName')    or ''))
 
-        # ── Deduplicate by (ScriptNum, ItemNo) if checkbox is checked ──
+        # ── Deduplicate by (Position, ItemNo) if checkbox is checked ──
         if self._chk_unique.isChecked():
             seen = set()
             unique_rows = []
             for row in rows:
-                key = (str(row.get('ScriptNum') or ''), str(row.get('ItemNo') or ''))
+                key = (str(row.get('Position') or ''), str(row.get('ItemNo') or ''))
                 if key not in seen:
                     seen.add(key)
                     unique_rows.append(row)
@@ -202,11 +208,11 @@ class BOMPanel(QWidget):
             dup_count = 0
 
         for row in rows:
-            has_bom = (row.get('BillType') == 1)
+            has_bom = (row.get('Artikelart') == 1)
 
             child = self._make_node(
                 parent=parent_item,
-                pos=str(row.get('ScriptNum')   or ''),
+                pos=str(row.get('Position')    or ''),
                 item_no=str(row.get('ItemNo')  or ''),
                 qty=str(row.get('Qty')         or ''),
                 has_bom=has_bom,
@@ -238,10 +244,10 @@ class BOMPanel(QWidget):
         data = self._build_export_data_from_tree()
         total = data['metadata']['total_items']
 
-        ext_map    = {"JSON": ".json",  "Excel": ".xlsx",  "PDF": ".pdf"}
+        ext_map    = {"JSON": ".json",  "CSV": ".csv",  "PDF": ".pdf"}
         filter_map = {
             "JSON":  "JSON Files (*.json)",
-            "Excel": "Excel Files (*.xlsx)",
+            "CSV":   "CSV Files (*.csv)",
             "PDF":   "PDF Files (*.pdf)",
         }
         path, _ = QFileDialog.getSaveFileName(
@@ -256,8 +262,8 @@ class BOMPanel(QWidget):
         try:
             if fmt == "JSON":
                 self._save_as_json(data, path)
-            elif fmt == "Excel":
-                self._save_as_excel(data, path)
+            elif fmt == "CSV":
+                self._save_as_csv(data, path)
             elif fmt == "PDF":
                 self._save_as_pdf(data, path)
             self._status.setText(f"Saved {total} items → {path}")
@@ -294,7 +300,7 @@ class BOMPanel(QWidget):
             qty = qty_text
 
         node = {
-            'script_num':  '' if is_root else item.text(0),
+            'position':    '' if is_root else item.text(0),
             'item_no':     item.text(1),
             'qty':         qty,
             'has_bom':     item.data(0, _ROLE_HAS_BOM) or False,
@@ -332,7 +338,7 @@ class BOMPanel(QWidget):
         indent = '  ' * level
         row = {
             'level':        level,
-            'script_num':   str(node.get('script_num') or ''),
+            'position':     str(node.get('position') or ''),
             'item_no':      indent + str(node.get('item_no') or ''),
             'qty':          qty,
             'has_bom':      'Yes' if (node.get('has_bom') or node.get('children')) else 'No',
@@ -345,74 +351,23 @@ class BOMPanel(QWidget):
             result.extend(self._flatten_bom(child, level + 1))
         return result
 
-    def _save_as_excel(self, data: dict, path: str):
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
-
-        wb   = openpyxl.Workbook()
+    def _save_as_csv(self, data: dict, path: str):
+        import csv
         meta = data.get('metadata', {})
-
-        # ── Sheet 1: BOM Tree ──
-        ws = wb.active
-        ws.title = 'BOM Tree'
-
-        title = (
-            f"BOM Export — {meta.get('item_no', '')}  |  "
-            f"Dataset: {meta.get('dataset', '')}  |  "
-            f"Items: {meta.get('total_items', '')}  |  "
-            f"Exported: {meta.get('exported_at', '')}"
-        )
-        ws['A1'] = title
-        ws['A1'].font = Font(bold=True, size=11)
-        ws.merge_cells('A1:G1')
-        ws.append([])  # blank spacer row
-
-        headers = ['Level', 'ScriptNum', 'Item No', 'Qty', 'Has BOM', 'Description', 'Full Name']
-        ws.append(headers)
-        header_fill = PatternFill(fill_type='solid', fgColor='1565C0')
-        header_font = Font(bold=True, color='FFFFFF')
-        for col_idx in range(1, len(headers) + 1):
-            cell = ws.cell(row=3, column=col_idx)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal='center')
-
-        ws.freeze_panes = 'A4'
-
         rows = self._flatten_bom(data.get('bom', {}))
-        alt_fill    = PatternFill(fill_type='solid', fgColor='EEF2FF')
-        blue_font   = Font(color='1565C0')
-        normal_font = Font()
-
-        for i, row in enumerate(rows):
-            ws.append([
-                row['level'], row['script_num'], row['item_no'],
-                row['qty'],   row['has_bom'],    row['description'], row['full_name'],
-            ])
-            excel_row = i + 4
-            bg = alt_fill if i % 2 == 1 else None
-            for col in range(1, len(headers) + 1):
-                cell = ws.cell(row=excel_row, column=col)
-                cell.font = blue_font if (row['_has_bom_raw'] and row['level'] > 0) else normal_font
-                if bg:
-                    cell.fill = bg
-
-        col_widths = [8, 12, 30, 8, 10, 38, 45]
-        for col_idx, width in enumerate(col_widths, 1):
-            ws.column_dimensions[get_column_letter(col_idx)].width = width
-
-        # ── Sheet 2: Metadata ──
-        ws2 = wb.create_sheet('Metadata')
-        ws2.append(['Field', 'Value'])
-        ws2['A1'].font = Font(bold=True)
-        ws2['B1'].font = Font(bold=True)
-        for key, val in meta.items():
-            ws2.append([key, str(val)])
-        ws2.column_dimensions['A'].width = 20
-        ws2.column_dimensions['B'].width = 35
-
-        wb.save(path)
+        headers = ['Level', 'Position', 'Item No', 'Qty', 'Has BOM', 'Description', 'Full Name']
+        with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            # metadata comment rows
+            writer.writerow([f"# BOM Export — {meta.get('item_no', '')}"])
+            writer.writerow([f"# Dataset: {meta.get('dataset', '')}  |  Items: {meta.get('total_items', '')}  |  Exported: {meta.get('exported_at', '')}"])
+            writer.writerow([])
+            writer.writerow(headers)
+            for row in rows:
+                writer.writerow([
+                    row['level'], row['position'], row['item_no'],
+                    row['qty'],   row['has_bom'],  row['description'], row['full_name'],
+                ])
 
     def _save_as_pdf(self, data: dict, path: str):
         from reportlab.lib.pagesizes import A4, landscape
@@ -447,14 +402,14 @@ class BOMPanel(QWidget):
 
         rows = self._flatten_bom(data.get('bom', {}))
 
-        col_headers = ['Lvl', 'ScriptNum', 'Item No', 'Qty', 'BOM?', 'Description', 'Full Name']
+        col_headers = ['Lvl', 'Position', 'Item No', 'Qty', 'BOM?', 'Description', 'Full Name']
         table_data  = [col_headers]
         blue_rows   = []
 
         for i, row in enumerate(rows, start=1):
             table_data.append([
                 str(row['level']),
-                row['script_num'],
+                row['position'],
                 row['item_no'],
                 str(row['qty']) if row['qty'] != '' else '',
                 row['has_bom'],

@@ -1,0 +1,466 @@
+{
+  "metadata": {
+    "item_no": "7943495.00",
+    "dataset": "INL",
+    "exported_at": "2026-03-09T11:46:39",
+    "total_items": 45
+  },
+  "bom": {
+    "item_no": "7943495.00",
+    "description": "V30E-160 RDFN-1-0-02",
+    "full_name": "V30E-160 RDFN-1-0-02",
+    "children": [
+      {
+        "script_num": "16",
+        "item_no": "7940364.00",
+        "qty": 9.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zsb.Kolben    V30E-160",
+        "full_name": "Ass. piston  V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "62",
+        "item_no": "7942733.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Mittelgehäuse",
+        "full_name": "middlehousing V30E-160/02",
+        "children": []
+      },
+      {
+        "script_num": "1",
+        "item_no": "7940808.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Frontgehäuse (-0) SAE V30E-160",
+        "full_name": "Front housing (-0) SAE V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "3",
+        "item_no": "7942730.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Endgehäuse R1",
+        "full_name": "endhousing R 1 V30E-160/02",
+        "children": []
+      },
+      {
+        "script_num": "5",
+        "item_no": "7942748.00",
+        "qty": 1.0,
+        "billtype": 1,
+        "has_bom": true,
+        "description": "Zsb. Wiege R",
+        "full_name": "assy. Swash plate R V30E-160 / 02",
+        "children": []
+      },
+      {
+        "script_num": "6",
+        "item_no": "7940527.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Deckel  SAE  V30E-160",
+        "full_name": "\u0002",
+        "children": []
+      },
+      {
+        "script_num": "8",
+        "item_no": "7941847.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Buchse   V30E-160",
+        "full_name": "Bushing   V30E-160/01",
+        "children": []
+      },
+      {
+        "script_num": "9",
+        "item_no": "7941809.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Distanzbuchse  V30E-160-01",
+        "full_name": "Spacer  V30E-160-01",
+        "children": []
+      },
+      {
+        "script_num": "10",
+        "item_no": "7940365.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zsb.Stellkolben   V30E-160",
+        "full_name": "Ass. setting piston V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "92",
+        "item_no": "7940243.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Gleitplatte   V30E-160",
+        "full_name": "Sliding plate   V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "11",
+        "item_no": "7940560.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Stellkolben (groß)  V30E-160",
+        "full_name": "Setting piston   V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "13",
+        "item_no": "7941156.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Lagerschale",
+        "full_name": "Bearing   V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "14",
+        "item_no": "7942726.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zsb. Kolbentrommel",
+        "full_name": "ass. cylinder barrel w. bushes",
+        "children": []
+      },
+      {
+        "script_num": "19",
+        "item_no": "7940058.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Rückholplatte",
+        "full_name": "Return plate V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "20",
+        "item_no": "7940059.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Druckfeder, Stellkolben  V30E-160",
+        "full_name": "Spring   V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "21",
+        "item_no": "7940060.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Federteller   V30E-160",
+        "full_name": "Spring plate  V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "23",
+        "item_no": "7942750.00",
+        "qty": 1.0,
+        "billtype": 1,
+        "has_bom": true,
+        "description": "Zsb. Steuerscheibe R",
+        "full_name": "assy. Valve plate R  V30E-160",
+        "children": [
+          {
+            "script_num": "23",
+            "item_no": "7941291.00",
+            "qty": 1.0,
+            "billtype": 0,
+            "has_bom": false,
+            "description": "Steuerscheibe R",
+            "full_name": "Valve plate R  V30E-160",
+            "children": []
+          }
+        ]
+      },
+      {
+        "script_num": "12",
+        "item_no": "7940065.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Druckfeder V30E-160",
+        "full_name": "Spring  V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "67",
+        "item_no": "7942747.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Spannsegment V30E-160/02",
+        "full_name": "Tripping piece  V30E-160/02",
+        "children": []
+      },
+      {
+        "script_num": "68",
+        "item_no": "7942745.00",
+        "qty": 4.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Distanzstück",
+        "full_name": "Spacer   V30E-160/02",
+        "children": []
+      },
+      {
+        "script_num": "64",
+        "item_no": "7940587.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Scheibe  V30E-160",
+        "full_name": "spacer  V30E-160",
+        "children": []
+      },
+      {
+        "script_num": "35",
+        "item_no": "7990924.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Senkschr. M 5x 12 DIN 7991-8.8",
+        "full_name": "Screw     M 5x 12 DIN 7991-8.8",
+        "children": []
+      },
+      {
+        "script_num": "80",
+        "item_no": "7993258.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Sechsk.Sch.AM16x 70DIN561-8.8",
+        "full_name": "Hex.head screw M16x70 DIN561",
+        "children": []
+      },
+      {
+        "script_num": "27",
+        "item_no": "7993302.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zylinderrollenlg. NUP2211",
+        "full_name": "Roller bearing NUP2211E G15",
+        "children": []
+      },
+      {
+        "script_num": "42",
+        "item_no": "7993303.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zylinderrollenlg. NU 2306 EG15",
+        "full_name": "Roller bearing NU2306EG15",
+        "children": []
+      },
+      {
+        "script_num": "41",
+        "item_no": "7991036.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Sicherungsring  62x2   DIN 472",
+        "full_name": "Retaining ring  62x2   DIN 472",
+        "children": []
+      },
+      {
+        "script_num": "31",
+        "item_no": "7993465.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Stützscheibe SS55x 68x3  DIN988",
+        "full_name": "Shim  SS55x68x3  DIN988",
+        "children": []
+      },
+      {
+        "script_num": "36",
+        "item_no": "7990092.00",
+        "qty": 4.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zylinderstift  6m6x14 DIN 7",
+        "full_name": "Cylind. pin    6m6x14 DIN 7",
+        "children": []
+      },
+      {
+        "script_num": "77",
+        "item_no": "7992651.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Verschl.schr. M33x2,0 DIN 908",
+        "full_name": "Plug screw M33x2,0 DIN 908",
+        "children": []
+      },
+      {
+        "script_num": "26",
+        "item_no": "7993494.00",
+        "qty": 4.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zyl.Schr. M16x200 DIN 912-10.9",
+        "full_name": "screw M16x200 DIN912",
+        "children": []
+      },
+      {
+        "script_num": "24",
+        "item_no": "7992519.00",
+        "qty": 4.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zyl.Schr. M8x12 DIN 7984-8.8",
+        "full_name": "Screw     M 8x 12 DIN 7984-8.8",
+        "children": []
+      },
+      {
+        "script_num": "93",
+        "item_no": "7992611.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zyl.Schr. M6x16 DIN 912-10.9",
+        "full_name": "Screw     M 6x 16 DIN 912",
+        "children": []
+      },
+      {
+        "script_num": "96",
+        "item_no": "7992606.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Connex- Spannstift SG 5x20",
+        "full_name": "Connex- cocking pin SG 5x20",
+        "children": []
+      },
+      {
+        "script_num": "47",
+        "item_no": "7993181.00",
+        "qty": 2.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Spiral-Spannstift 6x16",
+        "full_name": "Roll pin 6x16 DIN7343",
+        "children": []
+      },
+      {
+        "script_num": "40",
+        "item_no": "7992801.00",
+        "qty": 3.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Stützscheibe SS  50x 62x3",
+        "full_name": "Thrust washer SS  50x 62x3",
+        "children": []
+      },
+      {
+        "script_num": "63",
+        "item_no": "7992564.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Connex-Schwerspannst. SG 5x16",
+        "full_name": "Connex- cocking pin SG 5x16",
+        "children": []
+      },
+      {
+        "script_num": "61",
+        "item_no": "7993325.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Sich.ring  AS 55 x 3  DIN 471",
+        "full_name": "Retaining ring  AS55 DIN 471",
+        "children": []
+      },
+      {
+        "script_num": "65",
+        "item_no": "7994355.00",
+        "qty": 4.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Sechsk.Sch. M 8x 30 - 10.9 ISO4017",
+        "full_name": "Hex. head screw M8x30",
+        "children": []
+      },
+      {
+        "script_num": "45",
+        "item_no": "7992754.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Drehrichtungsschild",
+        "full_name": "Rotation indic.plate",
+        "children": []
+      },
+      {
+        "script_num": "37",
+        "item_no": "7991946.00",
+        "qty": 6.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Kerbnagel    2,6x6 N4 DIN 1476",
+        "full_name": "Fludet spike 2,6x6 DIN 1476",
+        "children": []
+      },
+      {
+        "script_num": "79",
+        "item_no": "7992565.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Zyl.Schr. M6x8 -10.9",
+        "full_name": "Screw M6x8 DIN 912",
+        "children": []
+      },
+      {
+        "script_num": "\u0002",
+        "item_no": "7993028.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Schutzstopfen TL-2-240",
+        "full_name": "Protecting cap TL-2-240",
+        "children": []
+      },
+      {
+        "script_num": "\u0002",
+        "item_no": "7992622.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Schutzstopfen H74/18",
+        "full_name": "Protecting cap H 18",
+        "children": []
+      },
+      {
+        "script_num": "\u0002",
+        "item_no": "7994545.00",
+        "qty": 1.0,
+        "billtype": 0,
+        "has_bom": false,
+        "description": "Dichtschraube GPN 735 G 3/4",
+        "full_name": "tight srew GPN 735 G 3/4",
+        "children": []
+      }
+    ]
+  }
+}
