@@ -37,7 +37,8 @@ class BOMLoader(QThread):
                     TEXTS.TXT1                       AS FullName,
                     STOCKTABLE_1.ITEMNUMBER          AS FatherItemNo,
                     STOCKTABLE_1.ITEMNAME            AS FatherDescription,
-                    TEXTS_1.TXT1                     AS FatherFullName
+                    TEXTS_1.TXT1                     AS FatherFullName,
+                    B407SBM_INL.SCRIPTNUM            AS ScriptNum
                 FROM XALinl.dbo.B407SBM_INL   B407SBM_INL,
                      XALinl.dbo.STOCKBILLMAT   STOCKBILLMAT,
                      XALinl.dbo.STOCKTABLE     STOCKTABLE,

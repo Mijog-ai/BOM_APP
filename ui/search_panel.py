@@ -21,6 +21,17 @@ _COLOUR_ACTIVE  = '#1565C0'    # blue border for active slot
 _COLOUR_SUBBOM  = '#1565C0'    # blue text for items that have a sub-BOM
 _COLOUR_INACTIVE_BORDER = '#BBBBBB'
 
+# Background colors by BOM depth (matches bom_panel.py palette)
+_DEPTH_COLORS = [
+    '#FFFFFF',  # depth 0 — root
+    '#F2F2F2',  # depth 1
+    '#E5E5E5',  # depth 2
+    '#D8D8D8',  # depth 3
+    '#CBCBCB',  # depth 4
+    '#BEBEBE',  # depth 5
+    '#B2B2B2',  # depth 6+
+]
+
 
 # ══════════════════════════════════════════════════════════════════════
 # _BomSlot — one self-contained BOM viewer panel
@@ -108,7 +119,7 @@ class _BomSlot(QFrame):
         # ── BOM tree ─────────────────────────────────────────────────
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels([
-            'Position', 'Item No', 'Qty', 'Sub-BOM', 'Description', 'Full Name'
+            'Position', 'Item No', 'Qty', 'SCRIPTNUM', 'Description', 'Full Name'
         ])
         self._tree.setStyleSheet("""
             QTreeWidget::item:selected {
@@ -122,7 +133,7 @@ class _BomSlot(QFrame):
         self._tree.setColumnWidth(3, 60)
         self._tree.setColumnWidth(4, 190)
         self._tree.setColumnWidth(5, 240)
-        self._tree.setAlternatingRowColors(True)
+        self._tree.setAlternatingRowColors(False)   # depth shading replaces this
         self._tree.setUniformRowHeights(True)
         self._tree.itemExpanded.connect(self._on_item_expanded)
         layout.addWidget(self._tree, 1)
@@ -172,7 +183,7 @@ class _BomSlot(QFrame):
         root = self._make_node(
             parent=self._tree,
             position='', item_no=item_no, qty='',
-            has_bom=False, description='Loading…', full_name=''
+            has_bom=False, description='Loading…', full_name='', scriptnum=''
         )
         root.setExpanded(True)
         bold = QFont()
@@ -237,10 +248,15 @@ class _BomSlot(QFrame):
                 has_bom=has_bom,
                 description=str(row.get('Description') or ''),
                 full_name=str(row.get('FullName')       or ''),
+                scriptnum=str(row.get('ScriptNum') or ''),
             )
             if has_bom:
                 for col in range(self._tree.columnCount()):
                     child.setForeground(col, QColor(_COLOUR_SUBBOM))
+
+        # Restore expanded state — Qt resets isExpanded() to False when the
+        # placeholder child is removed (childCount drops to 0).
+        parent_item.setExpanded(True)
 
         dup_str = f"  ({dup_count} dup(s) hidden)" if dup_count else ""
         self._status.setText(
@@ -269,16 +285,27 @@ class _BomSlot(QFrame):
             pass
 
     def _make_node(self, parent, position, item_no, qty,
-                   has_bom, description, full_name) -> QTreeWidgetItem:
+                   has_bom, description, full_name, scriptnum='') -> QTreeWidgetItem:
         node = QTreeWidgetItem(parent)
         node.setText(0, position)
         node.setText(1, item_no)
         node.setText(2, qty)
-        node.setText(3, 'Yes' if has_bom else '')
+        node.setText(3, str(scriptnum) if scriptnum else '')
         node.setText(4, description)
         node.setText(5, full_name)
         node.setData(0, _ROLE_ITEM_NO, item_no)
         node.setData(0, _ROLE_HAS_BOM, has_bom)
+
+        # ── Depth-based gray shading ──────────────────────────────────
+        depth = 0
+        p = node.parent()
+        while p is not None:
+            depth += 1
+            p = p.parent()
+        bg = QColor(_DEPTH_COLORS[min(depth, len(_DEPTH_COLORS) - 1)])
+        for col in range(self._tree.columnCount()):
+            node.setBackground(col, bg)
+
         if has_bom:
             ph = QTreeWidgetItem(node)
             ph.setText(1, '…')
