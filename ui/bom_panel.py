@@ -7,7 +7,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QSpinBox,
-    QDoubleSpinBox, QTreeWidget, QTreeWidgetItem, QFileDialog, QMessageBox
+    QDoubleSpinBox, QTreeWidget, QTreeWidgetItem, QFileDialog, QMessageBox, QRadioButton
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
@@ -170,6 +170,21 @@ class PDFSettingsDialog(QDialog):
         fl.addStretch()
         layout.addWidget(font_box)
 
+        # ── Page Orientation ─────────────────────────────────────
+        orient_box = QGroupBox("Page Orientation")
+        ol = QHBoxLayout(orient_box)
+
+        self._portrait = QRadioButton("Vertical (Portrait)")
+        self._landscape = QRadioButton("Horizontal (Landscape)")
+
+        self._portrait.setChecked(True)
+
+        ol.addWidget(self._portrait)
+        ol.addWidget(self._landscape)
+        ol.addStretch()
+
+        layout.addWidget(orient_box)
+
         # ── Column widths ─────────────────────────────────────────────
         col_box = QGroupBox("Column Widths (cm)")
         gl = QGridLayout(col_box)
@@ -204,9 +219,13 @@ class PDFSettingsDialog(QDialog):
         layout.addLayout(btn_row)
 
     def settings(self) -> dict:
+        orientation = "portrait"
+        if self._landscape.isChecked():
+            orientation = "landscape"
         return {
             'header_font_size': self._hdr_fs.value(),
             'body_font_size':   self._body_fs.value(),
+            "orientation": orientation,
             'col_widths':       [self._col_spins[lbl].value() for lbl, _ in self._cols],
         }
 
@@ -706,7 +725,7 @@ class BOMPanel(QWidget):
         wb.save(path)
 
     def _save_as_pdf(self, data: dict, path: str, settings: dict = None):
-        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.pagesizes import A4, landscape, portrait
         from reportlab.lib import colors
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import cm
@@ -750,6 +769,8 @@ class BOMPanel(QWidget):
         hdr_fs  = settings.get('header_font_size', 8)
         body_fs = settings.get('body_font_size',   7)
 
+        orientation = settings.get("orientation", "landscape")
+
         meta        = data.get('metadata', {})
         include_pos = self._chk_pdf_pos.isChecked()
 
@@ -764,9 +785,14 @@ class BOMPanel(QWidget):
         raw_widths = settings.get('col_widths') or default_widths
         col_widths = [w * cm for w in raw_widths]
 
+        if orientation == "portrait":
+            page_size = portrait(A4)
+        else:
+            page_size = landscape(A4)
+
         doc = SimpleDocTemplate(
             path,
-            pagesize=landscape(A4),
+            pagesize=page_size,
             leftMargin=1*cm, rightMargin=1*cm,
             topMargin=1.5*cm, bottomMargin=1.5*cm,
         )
