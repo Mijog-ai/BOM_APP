@@ -39,25 +39,25 @@ class BOMLoader(QThread):
                     STOCKTABLE_1.ITEMNAME            AS FatherDescription,
                     TEXTS_1.TXT1                     AS FatherFullName,
                     B407SBM_INL.SCRIPTNUM            AS ScriptNum
-                FROM XALinl.dbo.B407SBM_INL   B407SBM_INL,
-                     XALinl.dbo.STOCKBILLMAT   STOCKBILLMAT,
-                     XALinl.dbo.STOCKTABLE     STOCKTABLE,
-                     XALinl.dbo.STOCKTABLE     STOCKTABLE_1,
-                     XALinl.dbo.TEXTS          TEXTS,
-                     XALinl.dbo.TEXTS          TEXTS_1
-                WHERE B407SBM_INL.DATASET        = STOCKBILLMAT.DATASET
-                  AND STOCKBILLMAT.LINENO_       = B407SBM_INL.LINENO_
-                  AND STOCKBILLMAT.FATHERITEMNO  = B407SBM_INL.FATHERITEMNUM
-                  AND STOCKTABLE.DATASET         = STOCKBILLMAT.DATASET
-                  AND STOCKBILLMAT.CHILDITEMNO   = STOCKTABLE.ITEMNUMBER
-                  AND TEXTS.DATASET              = STOCKTABLE.DATASET
-                  AND STOCKTABLE.ITEMNUMBER      = TEXTS.TXTID
-                  AND TEXTS.DATASET              = STOCKTABLE_1.DATASET
-                  AND STOCKBILLMAT.FATHERITEMNO  = STOCKTABLE_1.ITEMNUMBER
-                  AND TEXTS_1.DATASET            = TEXTS.DATASET
-                  AND STOCKTABLE_1.ITEMNUMBER    = TEXTS_1.TXTID
-                  AND STOCKBILLMAT.DATASET       = ?
-                  AND STOCKBILLMAT.FATHERITEMNO  = ?
+                FROM XALinl.dbo.STOCKBILLMAT STOCKBILLMAT
+                INNER JOIN XALinl.dbo.STOCKTABLE STOCKTABLE
+                    ON  STOCKTABLE.DATASET       = STOCKBILLMAT.DATASET
+                    AND STOCKTABLE.ITEMNUMBER    = STOCKBILLMAT.CHILDITEMNO
+                LEFT  JOIN XALinl.dbo.TEXTS TEXTS
+                    ON  TEXTS.DATASET            = STOCKBILLMAT.DATASET
+                    AND TEXTS.TXTID              = STOCKTABLE.ITEMNUMBER
+                LEFT  JOIN XALinl.dbo.STOCKTABLE STOCKTABLE_1
+                    ON  STOCKTABLE_1.DATASET     = STOCKBILLMAT.DATASET
+                    AND STOCKTABLE_1.ITEMNUMBER  = STOCKBILLMAT.FATHERITEMNO
+                LEFT  JOIN XALinl.dbo.TEXTS TEXTS_1
+                    ON  TEXTS_1.DATASET          = STOCKBILLMAT.DATASET
+                    AND TEXTS_1.TXTID            = STOCKBILLMAT.FATHERITEMNO
+                LEFT  JOIN XALinl.dbo.B407SBM_INL B407SBM_INL
+                    ON  B407SBM_INL.DATASET      = STOCKBILLMAT.DATASET
+                    AND B407SBM_INL.LINENO_      = STOCKBILLMAT.LINENO_
+                    AND B407SBM_INL.FATHERITEMNUM = STOCKBILLMAT.FATHERITEMNO
+                WHERE STOCKBILLMAT.DATASET      = ?
+                  AND STOCKBILLMAT.FATHERITEMNO = ?
                 ORDER BY STOCKBILLMAT.POSITION
             """, (self.dataset, self.item_no))
 

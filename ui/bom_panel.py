@@ -61,6 +61,54 @@ _PLACEHOLDER = '__placeholder__'
 _ROLE_ITEM_NO  = Qt.ItemDataRole.UserRole          # 256 — stores item number string
 _ROLE_HAS_BOM  = Qt.ItemDataRole.UserRole + 1      # 257 — stores bool (BILLTYPE == 1)
 
+# Columns that should sort numerically (Position=0, Qty=2)
+_NUMERIC_SORT_COLS = frozenset({0, 2})
+
+
+def _fmt_qty(val) -> str:
+    """Format a qty value: whole numbers show as int (e.g. 1.0 → '1'),
+    fractional values keep their decimal (e.g. 1.5 → '1.5')."""
+    if val is None or val == '':
+        return ''
+    try:
+        f = float(val)
+        return str(int(f)) if f == int(f) else str(f)
+    except (ValueError, TypeError):
+        return str(val)
+
+
+class _BOMTreeItem(QTreeWidgetItem):
+    """QTreeWidgetItem with column-aware sorting.
+
+    - Position (col 0) and Qty (col 2) sort numerically.
+    - All other columns sort case-insensitively.
+    - Placeholder loading items always sort to the bottom.
+    """
+
+    def __lt__(self, other: QTreeWidgetItem) -> bool:  # noqa: D105
+        # Placeholders always go to the bottom regardless of sort direction
+        self_is_ph  = self.data(0, _ROLE_ITEM_NO) == _PLACEHOLDER
+        other_is_ph = other.data(0, _ROLE_ITEM_NO) == _PLACEHOLDER
+        if self_is_ph and other_is_ph:
+            return False
+        if self_is_ph:
+            return False   # self sinks to bottom
+        if other_is_ph:
+            return True    # other sinks to bottom
+
+        tree = self.treeWidget()
+        col  = tree.sortColumn() if tree else 1
+
+        a = self.text(col)
+        b = other.text(col)
+
+        if col in _NUMERIC_SORT_COLS:
+            try:
+                return float(a or 0) < float(b or 0)
+            except (ValueError, TypeError):
+                pass
+        return a.casefold() < b.casefold()
+
 # Background colors by BOM depth (index = depth, clamped at last entry)
 _DEPTH_COLORS = [
     '#FFFFFF',  # depth 0 — root
@@ -77,10 +125,10 @@ _DEPTH_COLORS = [
 # (label, default_with_pos, default_without_pos)  — None = not shown
 _PDF_COL_DEFS = [
     ('Position',    2.0,  None),
-    ('Item No',     5.0,  5.8),
-    ('Qty',         1.4,  1.5),
-    ('Drawing No.', 2.5,  2.5),
-    ('Description', 7.4,  8.0),
+    ('Artikel-Nr./Item No.',  5.0,  5.8),
+    ('Qty',                  1.4,  1.5),
+    ('Drawing No.',          2.5,  2.5),
+    ('Bezeichnung',          7.4,  8.0),
     ('Full Name',   4.7,  5.2),
 ]
 
@@ -297,6 +345,18 @@ class BOMPanel(QWidget):
         self._tree.setUniformRowHeights(True)
         self._tree.itemExpanded.connect(self._on_item_expanded)
         self._tree.itemChanged.connect(self._on_item_check_changed)
+
+        # ── Column-header sorting ──────────────────────────────────────
+        hdr = self._tree.header()
+        hdr.setSectionsClickable(True)
+        hdr.setSortIndicatorShown(True)
+        hdr.setToolTip(
+            "Click a column header to sort A→Z.\n"
+            "Click again to reverse (Z→A).\n"
+            "Position and Qty sort numerically."
+        )
+        hdr.sortIndicatorChanged.connect(self._on_sort_indicator_changed)
+
         layout.addWidget(self._tree)
 
     # ------------------------------------------------------------------ public
@@ -330,6 +390,10 @@ class BOMPanel(QWidget):
             root.setFont(col, bold)
 
         self._start_loader(item_no, root)
+
+    def _on_sort_indicator_changed(self, col: int, order: Qt.SortOrder):
+        """Qt has already toggled the indicator — just apply the sort."""
+        self._tree.sortItems(col, order)
 
     def _on_item_expanded(self, item: QTreeWidgetItem):
         """Fired when user clicks ▶ on a tree node."""
@@ -386,7 +450,7 @@ class BOMPanel(QWidget):
                     parent=parent_item,
                     pos=str(row.get('Position')    or ''),
                     item_no=str(row.get('ItemNo')  or ''),
-                    qty=str(row.get('Qty')         or ''),
+                    qty=_fmt_qty(row.get('Qty')),
                     has_bom=has_bom,
                     description=str(row.get('Description') or ''),
                     full_name=str(row.get('FullName')       or ''),
@@ -691,10 +755,10 @@ class BOMPanel(QWidget):
 
         # ── Column layout — Level is never shown; Position is optional ──
         if include_pos:
-            col_headers    = ['Position', 'Item No', 'Qty', 'Drawing No.', 'Description', 'Full Name']
+            col_headers    = ['Position', 'Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung', 'Full Name']
             default_widths = [2.0, 5.0, 1.4, 2.5, 7.4, 4.7]
         else:
-            col_headers    = ['Item No', 'Qty', 'Drawing No.', 'Description', 'Full Name']
+            col_headers    = ['Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung', 'Full Name']
             default_widths = [5.8, 1.5, 2.5, 8.0, 5.2]
 
         raw_widths = settings.get('col_widths') or default_widths
@@ -746,7 +810,7 @@ class BOMPanel(QWidget):
             depth = row['level']
             st    = _bold_ps if depth == 0 else _norm_ps
             indent  = depth * 8   # 8 pt per nesting level
-            qty_str = str(row['qty']) if row['qty'] != '' else ''
+            qty_str = _fmt_qty(row['qty'])
             if include_pos:
                 table_data.append([
                     _p(row['position'],    st),
@@ -798,11 +862,11 @@ class BOMPanel(QWidget):
         state = item.checkState(0)
 
         # Uncheck → propagate down to all loaded descendants
-        # Check  → re-check parent chain so a parent is never unchecked
-        #           while a child below it is checked
+        # Check  → propagate down AND fix parent chain
         if state == Qt.CheckState.Unchecked:
             self._cascade_check(item, Qt.CheckState.Unchecked)
         else:
+            self._cascade_check(item, Qt.CheckState.Checked)
             p = item.parent()
             while p is not None:
                 p.setCheckState(0, Qt.CheckState.Checked)
@@ -846,7 +910,7 @@ class BOMPanel(QWidget):
     def _make_node(self, parent, pos, item_no, qty,
                    has_bom, description, full_name, scriptnum='') -> QTreeWidgetItem:
         """Create and return a properly configured QTreeWidgetItem."""
-        node = QTreeWidgetItem(parent)
+        node = _BOMTreeItem(parent)
         node.setText(0, pos)
         node.setText(1, item_no)
         node.setText(2, qty)
@@ -869,7 +933,7 @@ class BOMPanel(QWidget):
             node.setBackground(col, bg)
 
         if has_bom:
-            ph = QTreeWidgetItem(node)
+            ph = _BOMTreeItem(node)
             ph.setText(1, '...')
             ph.setData(0, _ROLE_ITEM_NO, _PLACEHOLDER)
 
