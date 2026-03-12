@@ -128,8 +128,7 @@ _PDF_COL_DEFS = [
     ('Artikel-Nr./Item No.',  5.0,  5.8),
     ('Qty',                  1.4,  1.5),
     ('Drawing No.',          2.5,  2.5),
-    ('Bezeichnung',          7.4,  8.0),
-    ('Full Name',   4.7,  5.2),
+    ('Bezeichnung / Designation',  12.1,  13.2),
 ]
 
 
@@ -164,7 +163,7 @@ class PDFSettingsDialog(QDialog):
         fl.addSpacing(28)
         fl.addWidget(QLabel("Body:"))
         self._body_fs = QSpinBox()
-        self._body_fs.setRange(5, 16); self._body_fs.setValue(7); self._body_fs.setSuffix(" pt")
+        self._body_fs.setRange(5, 16); self._body_fs.setValue(8); self._body_fs.setSuffix(" pt")
         self._body_fs.setFixedWidth(72)
         fl.addWidget(self._body_fs)
         fl.addStretch()
@@ -764,10 +763,10 @@ class BOMPanel(QWidget):
 
         # ── Defaults when called without a settings dialog ────────────
         if settings is None:
-            settings = {'header_font_size': 8, 'body_font_size': 7, 'col_widths': None}
+            settings = {'header_font_size': 8, 'body_font_size': 8, 'col_widths': None}
 
         hdr_fs  = settings.get('header_font_size', 8)
-        body_fs = settings.get('body_font_size',   7)
+        body_fs = settings.get('body_font_size',   8)
 
         orientation = settings.get("orientation", "landscape")
 
@@ -776,11 +775,11 @@ class BOMPanel(QWidget):
 
         # ── Column layout — Level is never shown; Position is optional ──
         if include_pos:
-            col_headers    = ['Position', 'Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung', 'Full Name']
-            default_widths = [2.0, 5.0, 1.4, 2.5, 7.4, 4.7]
+            col_headers    = ['Position', 'Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung / Designation']
+            default_widths = [2.0, 5.0, 1.4, 2.5, 12.1]
         else:
-            col_headers    = ['Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung', 'Full Name']
-            default_widths = [5.8, 1.5, 2.5, 8.0, 5.2]
+            col_headers    = ['Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung / Designation']
+            default_widths = [5.8, 1.5, 2.5, 13.2]
 
         raw_widths = settings.get('col_widths') or default_widths
         col_widths = [w * cm for w in raw_widths]
@@ -837,22 +836,27 @@ class BOMPanel(QWidget):
             st    = _bold_ps if depth == 0 else _norm_ps
             indent  = depth * 8   # 8 pt per nesting level
             qty_str = _fmt_qty(row['qty'])
+            description_de = str(row.get('description') or '').strip()
+            designation_en = str(row.get('full_name')   or '').strip()
+            if description_de and designation_en:
+                desc_cell = f"{description_de}<br/>{designation_en}"
+            else:
+                desc_cell = description_de or designation_en
+
             if include_pos:
                 table_data.append([
                     _p(row['position'],    st),
                     _p(row['item_no'],     st, indent_pt=indent),
                     _p(qty_str,            st),
                     _p(row['scriptnum'],   st),
-                    _p(row['description'], st),
-                    _p(row['full_name'],   st),
+                    _p(desc_cell,          st),
                 ])
             else:
                 table_data.append([
                     _p(row['item_no'],     st, indent_pt=indent),
                     _p(qty_str,            st),
                     _p(row['scriptnum'],   st),
-                    _p(row['description'], st),
-                    _p(row['full_name'],   st),
+                    _p(desc_cell,          st),
                 ])
 
         # FONTNAME/FONTSIZE/TEXTCOLOR removed — handled by Paragraph styles above
