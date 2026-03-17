@@ -1,0 +1,14 @@
+_DEPTH_COLORS = [
+    '#FFFFFF',  # depth 0
+    '#FFFFFF',
+    '#FFFFFF',
+    '#FFFFFF',
+    '#FFFFFF',
+    '#FFFFFF',
+    # '#F2F2F2',
+    # '#E5E5E5',
+    # '#D8D8D8',
+    # '#CBCBCB',
+    # '#BEBEBE',
+    # '#B2B2B2',
+]

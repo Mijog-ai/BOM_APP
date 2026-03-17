@@ -4,6 +4,15 @@ import decimal
 import tempfile
 from datetime import datetime
 
+# reportlab is optional — imported lazily at PDF-export time.
+# We need the Flowable base class available at class-definition time so that
+# _BOMWithTreeConnector can inherit from it.  Fall back to object so the rest
+# of the module loads even when reportlab is not installed.
+try:
+    from reportlab.platypus import Flowable as _RLFlowable
+except ImportError:
+    _RLFlowable = object
+
 from PyQt6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QSpinBox,
@@ -121,14 +130,209 @@ _DEPTH_COLORS = [
 ]
 
 
+
+
+# class _BOMWithTreeConnector(_RLFlowable):
+#     """Platypus Flowable that wraps the BOM Table and overlays
+#     canvas-drawn tree connectors (vertical lines, filled dots, arrow heads)
+#     matching the engineering drawing style shown in the reference image.
+#
+#     Geometry per depth level (all in points):
+#       _INDENT  — horizontal distance between adjacent depth-level vertical lines
+#       _DOT_R   — radius of the filled circle at each child connection point
+#       _ARW_L   — total arrow length (shaft + head)
+#       _ARW_H   — half-height of the arrowhead triangle
+#
+#     The X origin of every connector is:
+#         struct_x  +  _LEFT_PAD  +  level * _INDENT
+#     where struct_x is the left edge of the Structure column relative to the
+#     table's own coordinate system (i.e. sum of column widths to the left).
+#     """
+#
+#     _INDENT   = 8
+#     _DOT_R    = 2.8
+#     _LINE_W   = 0.9
+#     _ARW_L    = 11
+#     _ARW_H    = 3.5
+#     _LEFT_PAD = 5          # pt inset from struct column left edge
+#
+#     # keep __init__ signature compatible with Flowable
+#     def __init__(self, tbl, rows, struct_x, struct_w):
+#         super().__init__()
+#         self.tbl      = tbl
+#         self.rows     = rows
+#         self.struct_x = struct_x
+#         self.struct_w = struct_w
+#
+#     def wrap(self, availWidth, availHeight):
+#         w, h = self.tbl.wrap(availWidth, availHeight)
+#         self._tw = w
+#         self._th = h
+#         return w, h
+#
+#     def split(self, availWidth, availHeight):
+#         """Delegate page splitting to the inner Table, keeping row data aligned.
+#
+#         After Table.split() determines the break point we re-associate the
+#         correct subset of self.rows with each _BOMWithTreeConnector so the
+#         canvas-drawn connectors match the right table rows on each page.
+#         """
+#         pieces = self.tbl.split(availWidth, availHeight)
+#         if len(pieces) <= 1:
+#             return []   # can't split — push whole flowable to next page
+#
+#         # _rowHeights[0] = header row; data rows start at index 1.
+#         rh    = self.tbl._rowHeights
+#         used  = rh[0]
+#         n_fit = 0
+#         for h in rh[1:]:
+#             if used + h > availHeight:
+#                 break
+#             used  += h
+#             n_fit += 1
+#
+#         if n_fit == 0:
+#             return []   # nothing fits — push to next page
+#
+#         rows_first  = self.rows[:n_fit]
+#         rows_second = self.rows[n_fit:]
+#
+#         result = [_BOMWithTreeConnector(pieces[0], rows_first,
+#                                         self.struct_x, self.struct_w)]
+#         if rows_second:
+#             result.append(_BOMWithTreeConnector(pieces[1], rows_second,
+#                                                 self.struct_x, self.struct_w))
+#         return result
+#
+#     def draw(self):
+#         self.tbl.drawOn(self.canv, 0, 0)
+#         self._draw_connectors()
+#
+#     # ── geometry helpers ──────────────────────────────────────────────────
+#
+#     def _row_geom(self, row_idx_from_top):
+#         """Return (center_y, top_y, bot_y) for a data row (0 = header row)."""
+#         rp = self.tbl._rowpositions
+#         N  = len(self.rows) + 1        # total rows: 1 header + N data
+#         bot = rp[N - 1 - row_idx_from_top]
+#         top = rp[N     - row_idx_from_top]
+#         return (bot + top) / 2, top, bot
+#
+#     def _x_vline(self, level):
+#         """Centre-X of the vertical line for depth *level* (0-based)."""
+#         return self.struct_x + self._LEFT_PAD + level * self._INDENT
+#
+#     # ── main drawing pass ─────────────────────────────────────────────────
+#
+#     def _draw_connectors(self):
+#         from reportlab.lib import colors
+#
+#         c = self.canv
+#         c.saveState()
+#
+#         LINE_CLR = colors.HexColor('#888888')
+#         ASM_CLR = colors.HexColor('#1565C0')
+#
+#         c.setLineWidth(self._LINE_W)
+#
+#         # Draw connectors row by row
+#         for di, row in enumerate(self.rows):
+#             ri = di + 1  # +1 because table row 0 is header
+#
+#             depth = row['level']
+#             dlast = row.get('_depth_last', [])
+#             has_bom = row.get('_has_bom_raw', False)
+#
+#             cy, ry_top, ry_bot = self._row_geom(ri)
+#
+#             # Root row: only draw arrow if assembly
+#             if depth == 0:
+#                 if has_bom:
+#                     x_root = self._x_vline(0)
+#                     self._draw_arrow(c, x_root + 2, cy, ASM_CLR, scale=1.4)
+#                 continue
+#
+#             # ------------------------------------------------------------
+#             # 1) Draw pass-through verticals for ancestor levels
+#             # ------------------------------------------------------------
+#             c.setStrokeColor(LINE_CLR)
+#             for lev in range(depth - 1):
+#                 # if ancestor is not last sibling, its vertical continues
+#                 is_ancestor_last = dlast[lev] if lev < len(dlast) else True
+#                 if not is_ancestor_last:
+#                     xv = self._x_vline(lev)
+#                     c.line(xv, ry_bot, xv, ry_top)
+#
+#             # ------------------------------------------------------------
+#             # 2) Draw current node vertical branch
+#             # ------------------------------------------------------------
+#             parent_lev = depth - 1
+#             xv = self._x_vline(parent_lev)
+#
+#             is_last = dlast[parent_lev] if parent_lev < len(dlast) else True
+#
+#             # line comes from above into this row
+#             c.line(xv, cy, xv, ry_top)
+#
+#             # if more siblings follow, continue below too
+#             if not is_last:
+#                 c.line(xv, ry_bot, xv, cy)
+#
+#             # ------------------------------------------------------------
+#             # 3) Draw horizontal stub to the node dot
+#             # ------------------------------------------------------------
+#             xd = xv + self._INDENT * 0.65
+#             c.line(xv, cy, xd, cy)
+#
+#             # ------------------------------------------------------------
+#             # 4) Draw dot on the line for this child row
+#             # ------------------------------------------------------------
+#             dot_clr = ASM_CLR if has_bom else LINE_CLR
+#             c.setFillColor(dot_clr)
+#             c.circle(xd, cy, self._DOT_R, stroke=0, fill=1)
+#
+#             # ------------------------------------------------------------
+#             # 5) Draw arrow for assembly nodes
+#             # ------------------------------------------------------------
+#             if has_bom:
+#                 self._draw_arrow(c, xd + 2, cy, ASM_CLR, scale=1.0)
+#
+#         c.restoreState()
+#
+#     def _draw_arrow(self, c, x, y, color, scale=1.0):
+#         """Filled left-pointing arrowhead + horizontal shaft.
+#
+#         scale > 1.0 makes the root (depth-0) arrow visibly larger so that
+#         depth-1 arrows nest comfortably inside its visual span.
+#         """
+#         ah = self._ARW_H * scale
+#         hl = self._ARW_L * 0.55 * scale   # head length
+#         sl = self._ARW_L * 0.45 * scale   # shaft length
+#
+#         c.setFillColor(color)
+#         c.setStrokeColor(color)
+#         c.setLineWidth(1.1)
+#
+#         # shaft (right of the arrowhead tip)
+#         c.line(x + hl, y, x + hl + sl, y)
+#
+#         # filled triangular arrowhead pointing left
+#         p = c.beginPath()
+#         p.moveTo(x,      y)           # tip  (leftmost)
+#         p.lineTo(x + hl, y + ah)      # top-right
+#         p.lineTo(x + hl, y - ah)      # bottom-right
+#         p.close()
+#         c.drawPath(p, stroke=0, fill=1)
+
+
 # Column definitions for PDF settings dialog
 # (label, default_with_pos, default_without_pos)  — None = not shown
 _PDF_COL_DEFS = [
     ('Position',    2.0,  None),
-    ('Artikel-Nr./Item No.',  5.0,  5.8),
-    ('Qty',                  1.4,  1.5),
-    ('Drawing No.',          2.5,  2.5),
-    ('Bezeichnung / Designation',  12.1,  13.2),
+    ('Artikel-Nr./Item No.',  4,  5),
+    ('Qty',                  1,  1.5),
+    ('Drawing No.',          2,  2.5),
+    ('Bezeichnung / Designation', 9,  10),
 ]
 
 
@@ -157,13 +361,13 @@ class PDFSettingsDialog(QDialog):
         fl = QHBoxLayout(font_box)
         fl.addWidget(QLabel("Header:"))
         self._hdr_fs = QSpinBox()
-        self._hdr_fs.setRange(5, 18); self._hdr_fs.setValue(8); self._hdr_fs.setSuffix(" pt")
+        self._hdr_fs.setRange(5, 18); self._hdr_fs.setValue(12); self._hdr_fs.setSuffix(" pt")
         self._hdr_fs.setFixedWidth(72)
         fl.addWidget(self._hdr_fs)
         fl.addSpacing(28)
         fl.addWidget(QLabel("Body:"))
         self._body_fs = QSpinBox()
-        self._body_fs.setRange(5, 16); self._body_fs.setValue(8); self._body_fs.setSuffix(" pt")
+        self._body_fs.setRange(5, 16); self._body_fs.setValue(11); self._body_fs.setSuffix(" pt")
         self._body_fs.setFixedWidth(72)
         fl.addWidget(self._body_fs)
         fl.addStretch()
@@ -254,6 +458,7 @@ class BOMPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._active_loaders = []   # keep refs so GC won't kill running threads
+        self._export_pending = False
         self._setup_ui()
 
     # ------------------------------------------------------------------ setup
@@ -282,7 +487,7 @@ class BOMPanel(QWidget):
 
         # Export format selector + button
         self._export_fmt = QComboBox()
-        self._export_fmt.addItems(["JSON", "Excel", "PDF"])
+        self._export_fmt.addItems(["PDF", "JSON", "Excel" ])
         self._export_fmt.setFixedWidth(68)
         self._export_fmt.setToolTip("Choose export format")
 
@@ -359,6 +564,7 @@ class BOMPanel(QWidget):
         self._tree.setColumnWidth(3, 75)
         self._tree.setColumnWidth(4, 220)
         self._tree.setColumnWidth(5, 280)
+        # self._tree.setColumnWidth(6, 70)
         self._tree.setAlternatingRowColors(False)   # depth shading replaces this
         self._tree.setUniformRowHeights(True)
         self._tree.itemExpanded.connect(self._on_item_expanded)
@@ -391,6 +597,7 @@ class BOMPanel(QWidget):
 
         self._tree.clear()
         self._active_loaders.clear()
+        # self._export_pending = False
         self._status.setText(f"Loading BOM for  {item_no} ...")
 
         # Root node — has_bom=False so NO placeholder is added.
@@ -503,38 +710,80 @@ class BOMPanel(QWidget):
 
     # ------------------------------------------------------------------ export
     def _export_bom(self):
-        """Export the current tree state — expanded = included, collapsed = header only."""
         if self._tree.invisibleRootItem().childCount() == 0:
             QMessageBox.information(self, "Export", "Load a BOM first.")
             return
 
+        # Expand any unloaded (checked) placeholder nodes before exporting
+        root = self._tree.invisibleRootItem().child(0)
+        fired = self._expand_all_placeholders(root) if root else 0
+
+        if fired > 0 or self._active_loaders:
+            self._export_pending = True
+            self._status.setText("Loading unread nodes before export…")
+            return
+
+        self._do_export()
+
+    def _expand_all_placeholders(self, item: QTreeWidgetItem) -> int:
+        """Recursively fire loaders for checked nodes whose children are not yet loaded.
+        Returns the number of loaders started."""
+        if item is None:
+            return 0
+        # Skip unchecked nodes — they won't appear in the export anyway
+        if item.checkState(0) == Qt.CheckState.Unchecked:
+            return 0
+
+        fired = 0
+        if item.childCount() == 1 and item.child(0).data(0, _ROLE_ITEM_NO) == _PLACEHOLDER:
+            item_no = item.data(0, _ROLE_ITEM_NO)
+            item.removeChild(item.child(0))
+            self._start_loader(item_no, item)
+            fired += 1
+        else:
+            for i in range(item.childCount()):
+                fired += self._expand_all_placeholders(item.child(i))
+        return fired
+
+    def _do_export(self):
+        """Dispatch to the correct save handler once all nodes are loaded."""
         fmt  = self._export_fmt.currentText()
         data = self._build_export_data_from_tree()
 
-        if fmt == "PDF":
-            self._export_as_pdf(data)
-            return
-
-        ext_map    = {"JSON": ".json", "Excel": ".xlsx"}
-        filter_map = {"JSON": "JSON Files (*.json)", "Excel": "Excel Files (*.xlsx)"}
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            f"Save BOM as {fmt}",
-            f"BOM_{data['metadata']['item_no']}{ext_map[fmt]}",
-            filter_map[fmt],
-        )
-        if not path:
-            return
-
-        try:
-            if fmt == "JSON":
+        if fmt == 'JSON':
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save BOM as JSON",
+                f"BOM_{data['metadata']['item_no']}.json",
+                "JSON Files (*.json)",
+            )
+            if not path:
+                return
+            try:
                 self._save_as_json(data, path)
-            elif fmt == "Excel":
+                self._status.setText(f"Saved {data['metadata']['total_items']} items → {path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", str(e))
+                self._status.setText(f"Export error: {e}")
+
+        elif fmt == 'Excel':
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save BOM as Excel",
+                f"BOM_{data['metadata']['item_no']}.xlsx",
+                "Excel Files (*.xlsx)",
+            )
+            if not path:
+                return
+            try:
                 self._save_as_excel(data, path)
-            self._status.setText(f"Saved {data['metadata']['total_items']} items → {path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
-            self._status.setText(f"Export error: {e}")
+                self._status.setText(f"Saved {data['metadata']['total_items']} items → {path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", str(e))
+                self._status.setText(f"Export error: {e}")
+
+        elif fmt == 'PDF':
+            self._export_as_pdf(data)
+
+
 
     def _export_as_pdf(self, data: dict):
         """Show PDF settings dialog (with preview), then save."""
@@ -590,15 +839,7 @@ class BOMPanel(QWidget):
             'bom': bom,
         }
 
-    def _widget_item_to_dict(self, item: QTreeWidgetItem,
-                              is_root: bool = False):
-        """
-        Convert a QTreeWidgetItem into a dict for export.
-        Returns None if the item is unchecked (skip from export).
-        Children are included only if the item is expanded in the tree.
-        """
-        # Respect checkbox — unchecked item (and its children, which are also
-        # unchecked by cascade) is excluded from the export entirely.
+    def _widget_item_to_dict(self, item: QTreeWidgetItem, is_root: bool = False):
         if item.checkState(0) == Qt.CheckState.Unchecked:
             return None
 
@@ -609,22 +850,26 @@ class BOMPanel(QWidget):
             qty = qty_text
 
         node = {
-            'position':    '' if is_root else item.text(0),
-            'item_no':     item.text(1),
-            'qty':         qty,
-            'scriptnum':   item.text(3),
-            'has_bom':     item.data(0, _ROLE_HAS_BOM) or False,
+            'position': '' if is_root else item.text(0),
+            'item_no': item.text(1),
+            'qty': qty,
+            'scriptnum': item.text(3),
+            'has_bom': item.data(0, _ROLE_HAS_BOM) or False,
             'description': item.text(4),
-            'full_name':   item.text(5),
-            'children':    [],
+            'full_name': item.text(5),
+            'children': [],
         }
 
-        # Only recurse into children that have been loaded and the node is expanded
-        if item.isExpanded():
+        # Recurse if children have been loaded, even if the node is collapsed
+        has_real_children = any(
+            item.child(i).data(0, _ROLE_ITEM_NO) != _PLACEHOLDER
+            for i in range(item.childCount())
+        )
+        if item.isExpanded() or has_real_children:
             for i in range(item.childCount()):
                 child = item.child(i)
                 if child.data(0, _ROLE_ITEM_NO) == _PLACEHOLDER:
-                    continue   # not yet loaded — skip
+                    continue
                 child_dict = self._widget_item_to_dict(child)
                 if child_dict is not None:
                     node['children'].append(child_dict)
@@ -641,28 +886,53 @@ class BOMPanel(QWidget):
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, cls=_JsonEncoder, indent=2, ensure_ascii=False)
 
-    def _flatten_bom(self, node: dict, level: int = 0) -> list:
+    def _flatten_bom(self, node: dict, level: int = 0, parent_position: str = '',
+                     _depth_last: list = None) -> list:
         """Recursively flatten nested BOM dict into a list of row dicts.
         Rows with negative qty are excluded (along with their children).
+        _depth_last: list of bools — True means that depth-level node was the last sibling.
         """
+        if _depth_last is None:
+            _depth_last = []
+
         qty = node.get('qty', '')
         if isinstance(qty, (int, float)) and qty < 0:
             return []
 
-        indent = '  ' * level
+        position = str(node.get('position') or '').strip()
+        item_no = str(node.get('item_no') or '').strip()
+
+        # Build hierarchical position path, e.g. 010.020.030
+        if parent_position and position:
+            position_path = f"{parent_position}.{position}"
+        else:
+            position_path = position
+
         row = {
-            'level':        level,
-            'position':     str(node.get('position') or ''),
-            'item_no':      indent + str(node.get('item_no') or ''),
-            'qty':          qty,
-            'scriptnum':    str(node.get('scriptnum') or ''),
-            'description':  str(node.get('description') or ''),
-            'full_name':    str(node.get('full_name') or ''),
+            'level': level,
+            'position': position,
+            'position_path': position_path,
+            'item_no': item_no,
+            'qty': qty,
+            'scriptnum': str(node.get('scriptnum') or '').strip(),
+            'description': str(node.get('description') or '').strip(),
+            'full_name': str(node.get('full_name') or '').strip(),
             '_has_bom_raw': node.get('has_bom', False),
+            '_depth_last': list(_depth_last),
         }
+
         result = [row]
-        for child in node.get('children', []):
-            result.extend(self._flatten_bom(child, level + 1))
+
+        # Pre-filter negative-qty children so is_last is accurate
+        visible_children = [
+            c for c in node.get('children', [])
+            if not (isinstance(c.get('qty', ''), (int, float)) and c.get('qty', '') < 0)
+        ]
+        for idx, child in enumerate(visible_children):
+            is_last = (idx == len(visible_children) - 1)
+            result.extend(self._flatten_bom(child, level + 1, position_path,
+                                            _depth_last + [is_last]))
+
         return result
 
     def _save_as_excel(self, data: dict, path: str):
@@ -671,6 +941,8 @@ class BOMPanel(QWidget):
 
         meta = data.get('metadata', {})
         rows = self._flatten_bom(data.get('bom', {}))
+        if rows and rows[0].get("level") == 0:
+            rows = rows[1:]
 
         wb = Workbook()
         ws = wb.active
@@ -724,6 +996,9 @@ class BOMPanel(QWidget):
         wb.save(path)
 
     def _save_as_pdf(self, data: dict, path: str, settings: dict = None):
+        from xml.sax.saxutils import escape
+        import re
+
         from reportlab.lib.pagesizes import A4, landscape, portrait
         from reportlab.lib import colors
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -756,123 +1031,185 @@ class BOMPanel(QWidget):
                 self.setFont('Helvetica', 7)
                 self.setFillColorRGB(0.4, 0.4, 0.4)
                 self.drawRightString(
-                    self._pagesize[0] - 1 * cm, 0.55 * cm,
+                    self._pagesize[0] - 1 * cm,
+                    0.55 * cm,
                     f"{self._pageNumber} von {total}",
                 )
                 self.restoreState()
 
         # ── Defaults when called without a settings dialog ────────────
         if settings is None:
-            settings = {'header_font_size': 8, 'body_font_size': 8, 'col_widths': None}
+            settings = {
+                'header_font_size': 8,
+                'body_font_size': 8,
+                'col_widths': None,
+                'orientation': 'landscape',
+            }
 
-        hdr_fs  = settings.get('header_font_size', 8)
-        body_fs = settings.get('body_font_size',   8)
-
+        hdr_fs = settings.get('header_font_size', 8)
+        body_fs = settings.get('body_font_size', 8)
         orientation = settings.get("orientation", "landscape")
 
-        meta        = data.get('metadata', {})
+        meta = data.get('metadata', {})
         include_pos = self._chk_pdf_pos.isChecked()
 
-        # ── Column layout — Level is never shown; Position is optional ──
+        # ── Column layout — Position is optional ──────────────────────
         if include_pos:
-            col_headers    = ['Position', 'Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung / Designation']
-            default_widths = [2.0, 5.0, 1.4, 2.5, 12.1]
+            col_headers = [
+                'Position',
+                'Artikel-Nr./Item No.',
+                'Qty',
+                'Drawing No.',
+                'Bezeichnung / Designation',
+            ]
+            default_widths = [2.8, 5.0, 1.4, 2.5, 11.3]
+            item_col = 1
         else:
-            col_headers    = ['Artikel-Nr./Item No.', 'Qty', 'Drawing No.', 'Bezeichnung / Designation']
-            default_widths = [5.8, 1.5, 2.5, 13.2]
+            col_headers = [
+                'Artikel-Nr./Item No.',
+                'Qty',
+                'Drawing No.',
+                'Bezeichnung / Designation',
+            ]
+            default_widths = [6.6, 1.5, 2.5, 12.4]
+            item_col = 0
 
         raw_widths = settings.get('col_widths') or default_widths
         col_widths = [w * cm for w in raw_widths]
 
-        if orientation == "portrait":
-            page_size = portrait(A4)
-        else:
-            page_size = landscape(A4)
+        page_size = portrait(A4) if orientation == "portrait" else landscape(A4)
 
         doc = SimpleDocTemplate(
             path,
             pagesize=page_size,
-            leftMargin=1*cm, rightMargin=1*cm,
-            topMargin=1.5*cm, bottomMargin=1.5*cm,
+            leftMargin=1 * cm,
+            rightMargin=1 * cm,
+            topMargin=1.5 * cm,
+            bottomMargin=1.5 * cm,
         )
+
         styles = getSampleStyleSheet()
-        story  = []
+        story = []
 
         title_style = ParagraphStyle(
-            'BOMTitle', parent=styles['Heading2'], fontSize=11, spaceAfter=4,
+            'BOMTitle',
+            parent=styles['Heading2'],
+            fontSize=11,
+            spaceAfter=4,
         )
+
         story.append(Paragraph(
-            f"BOM Export &mdash; {meta.get('item_no', '')} &nbsp;|&nbsp; "
-            f"{meta.get('description', '')} &nbsp;|&nbsp; "
-            f"Exported: {meta.get('exported_at', '')}",
+            f"BOM Export &mdash; {escape(str(meta.get('item_no', '')))} &nbsp;|&nbsp; "
+            f"{escape(str(meta.get('description', '')))} &nbsp;|&nbsp; "
+            f"Exported: {escape(str(meta.get('exported_at', '')))}",
             title_style,
         ))
-        story.append(Spacer(1, 0.3*cm))
+        story.append(Spacer(1, 0.3 * cm))
 
         rows = self._flatten_bom(data.get('bom', {}))
 
-        # ── Paragraph styles — font/color live in the cell, not in TableStyle ──
-        # This lets ReportLab wrap text and expand row height automatically.
-        _lead = lambda fs: max(fs + 2, int(fs * 1.25))
-        _hdr_ps  = ParagraphStyle('BOMHdr',  fontName='Helvetica-Bold',
-                                  fontSize=hdr_fs,  leading=_lead(hdr_fs),
-                                  textColor=colors.white, alignment=1)
-        _norm_ps = ParagraphStyle('BOMCell', fontName='Helvetica',
-                                  fontSize=body_fs, leading=_lead(body_fs))
-        _bold_ps = ParagraphStyle('BOMCellB', fontName='Helvetica-Bold',
-                                  fontSize=body_fs, leading=_lead(body_fs))
 
-        def _p(text, style, indent_pt=0):
-            txt = str(text) if text is not None else ''
-            if indent_pt:
-                s = ParagraphStyle('', parent=style, leftIndent=indent_pt)
-                return Paragraph(txt.lstrip(), s)
+        # ── Paragraph styles — font/color live in the cell, not in TableStyle ──
+        def _lead(fs):
+            return int(fs * 1.35)
+
+        _hdr_ps = ParagraphStyle(
+            'BOMHdr',
+            fontName='Helvetica-Bold',
+            fontSize=hdr_fs,
+            leading=_lead(hdr_fs),
+            textColor=colors.white,
+            alignment=1,
+        )
+
+        _norm_ps = ParagraphStyle(
+            'BOMCell',
+            fontName='Helvetica',
+            fontSize=body_fs,
+            leading=_lead(body_fs),
+            alignment=0,
+        )
+
+        _bold_ps = ParagraphStyle(
+            'BOMCellB',
+            fontName='Helvetica-Bold',
+            fontSize=body_fs,
+            leading=_lead(body_fs),
+            alignment=0,
+        )
+
+        def _clean_text(text):
+            txt = '' if text is None else str(text)
+            txt = re.sub(r'[\x00-\x08\x0B-\x1F\x7F]', '', txt)
+            return escape(txt)
+
+        def _p(text, style):
+            return Paragraph(_clean_text(text), style)
+
+        def _p_html(text, style):
+            txt = '' if text is None else str(text)
+            txt = re.sub(r'[\x00-\x08\x0B-\x1F\x7F]', '', txt)
+            # keep allowed <br/> tags, escape everything else first
+            txt = escape(txt).replace('&lt;br/&gt;', '<br/>').replace('&lt;br&gt;', '<br/>')
             return Paragraph(txt, style)
 
         table_data = [[_p(h, _hdr_ps) for h in col_headers]]
 
         for row in rows:
             depth = row['level']
-            st    = _bold_ps if depth == 0 else _norm_ps
-            indent  = depth * 8   # 8 pt per nesting level
+            st = _bold_ps if depth == 0 else _norm_ps
             qty_str = _fmt_qty(row['qty'])
+
             description_de = str(row.get('description') or '').strip()
-            designation_en = str(row.get('full_name')   or '').strip()
+            designation_en = str(row.get('full_name') or '').strip()
+
             if description_de and designation_en:
-                desc_cell = f"{description_de}<br/>{designation_en}"
+                if designation_en == description_de:
+                    desc_cell = description_de
+                else:
+                    desc_cell = f"{description_de}<br/>{designation_en}"
             else:
                 desc_cell = description_de or designation_en
 
+            # Use hierarchical position path in PDF
+            pos_value = row.get('position_path') or row.get('position') or ''
+
             if include_pos:
                 table_data.append([
-                    _p(row['position'],    st),
-                    _p(row['item_no'],     st, indent_pt=indent),
-                    _p(qty_str,            st),
-                    _p(row['scriptnum'],   st),
-                    _p(desc_cell,          st),
+                    _p(pos_value, st),
+                    _p(row['item_no'], st),
+                    _p(qty_str, st),
+                    _p(row['scriptnum'], st),
+                    _p_html(desc_cell, st),
                 ])
             else:
                 table_data.append([
-                    _p(row['item_no'],     st, indent_pt=indent),
-                    _p(qty_str,            st),
-                    _p(row['scriptnum'],   st),
-                    _p(desc_cell,          st),
+                    _p(row['item_no'], st),
+                    _p(qty_str, st),
+                    _p(row['scriptnum'], st),
+                    _p_html(desc_cell, st),
                 ])
 
-        # FONTNAME/FONTSIZE/TEXTCOLOR removed — handled by Paragraph styles above
         style_cmds = [
-            ('BACKGROUND',    (0, 0), (-1, 0),  colors.HexColor('#1565C0')),
-            ('GRID',          (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
-            ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING',    (0, 0), (-1, -1), 2),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 3),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 3),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1565C0')),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ]
+
         for i, row in enumerate(rows):
-            depth   = row['level']
+            depth = row['level']
             hex_col = _DEPTH_COLORS[min(depth, len(_DEPTH_COLORS) - 1)]
-            style_cmds.append(('BACKGROUND', (0, i + 1), (-1, i + 1), colors.HexColor(hex_col)))
+            style_cmds.append(
+                ('BACKGROUND', (0, i + 1), (-1, i + 1), colors.HexColor(hex_col))
+            )
+        #     # Indent the item-number cell to show hierarchy depth
+        #     style_cmds.append(
+        #         ('LEFTPADDING', (item_col, i + 1), (item_col, i + 1), 3 + depth * 10)
+        #     )
 
         tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
         tbl.setStyle(TableStyle(style_cmds))
@@ -917,6 +1254,7 @@ class BOMPanel(QWidget):
     def _clear(self):
         self._tree.clear()
         self._active_loaders.clear()
+        self._export_pending = False
         self._status.setText("Cleared.")
 
     # ------------------------------------------------------------------ helpers
@@ -936,6 +1274,9 @@ class BOMPanel(QWidget):
             self._active_loaders.remove(loader)
         except ValueError:
             pass
+        if self._export_pending and not self._active_loaders:
+            self._export_pending = False
+            self._export_bom()
 
     def _make_node(self, parent, pos, item_no, qty,
                    has_bom, description, full_name, scriptnum='') -> QTreeWidgetItem:
