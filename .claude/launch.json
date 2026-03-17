@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Phase 1 Runner",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["app.py"],
+      "port": 0
+    },
+    {
+      "name": "main.py (BOM Query)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py"],
+      "port": 0
+    }
+  ]
+}

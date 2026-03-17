@@ -4,15 +4,6 @@ import decimal
 import tempfile
 from datetime import datetime
 
-# reportlab is optional — imported lazily at PDF-export time.
-# We need the Flowable base class available at class-definition time so that
-# _BOMWithTreeConnector can inherit from it.  Fall back to object so the rest
-# of the module loads even when reportlab is not installed.
-try:
-    from reportlab.platypus import Flowable as _RLFlowable
-except ImportError:
-    _RLFlowable = object
-
 from PyQt6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QSpinBox,
@@ -129,210 +120,15 @@ _DEPTH_COLORS = [
     '#B2B2B2',  # depth 6+
 ]
 
-
-
-
-# class _BOMWithTreeConnector(_RLFlowable):
-#     """Platypus Flowable that wraps the BOM Table and overlays
-#     canvas-drawn tree connectors (vertical lines, filled dots, arrow heads)
-#     matching the engineering drawing style shown in the reference image.
-#
-#     Geometry per depth level (all in points):
-#       _INDENT  — horizontal distance between adjacent depth-level vertical lines
-#       _DOT_R   — radius of the filled circle at each child connection point
-#       _ARW_L   — total arrow length (shaft + head)
-#       _ARW_H   — half-height of the arrowhead triangle
-#
-#     The X origin of every connector is:
-#         struct_x  +  _LEFT_PAD  +  level * _INDENT
-#     where struct_x is the left edge of the Structure column relative to the
-#     table's own coordinate system (i.e. sum of column widths to the left).
-#     """
-#
-#     _INDENT   = 8
-#     _DOT_R    = 2.8
-#     _LINE_W   = 0.9
-#     _ARW_L    = 11
-#     _ARW_H    = 3.5
-#     _LEFT_PAD = 5          # pt inset from struct column left edge
-#
-#     # keep __init__ signature compatible with Flowable
-#     def __init__(self, tbl, rows, struct_x, struct_w):
-#         super().__init__()
-#         self.tbl      = tbl
-#         self.rows     = rows
-#         self.struct_x = struct_x
-#         self.struct_w = struct_w
-#
-#     def wrap(self, availWidth, availHeight):
-#         w, h = self.tbl.wrap(availWidth, availHeight)
-#         self._tw = w
-#         self._th = h
-#         return w, h
-#
-#     def split(self, availWidth, availHeight):
-#         """Delegate page splitting to the inner Table, keeping row data aligned.
-#
-#         After Table.split() determines the break point we re-associate the
-#         correct subset of self.rows with each _BOMWithTreeConnector so the
-#         canvas-drawn connectors match the right table rows on each page.
-#         """
-#         pieces = self.tbl.split(availWidth, availHeight)
-#         if len(pieces) <= 1:
-#             return []   # can't split — push whole flowable to next page
-#
-#         # _rowHeights[0] = header row; data rows start at index 1.
-#         rh    = self.tbl._rowHeights
-#         used  = rh[0]
-#         n_fit = 0
-#         for h in rh[1:]:
-#             if used + h > availHeight:
-#                 break
-#             used  += h
-#             n_fit += 1
-#
-#         if n_fit == 0:
-#             return []   # nothing fits — push to next page
-#
-#         rows_first  = self.rows[:n_fit]
-#         rows_second = self.rows[n_fit:]
-#
-#         result = [_BOMWithTreeConnector(pieces[0], rows_first,
-#                                         self.struct_x, self.struct_w)]
-#         if rows_second:
-#             result.append(_BOMWithTreeConnector(pieces[1], rows_second,
-#                                                 self.struct_x, self.struct_w))
-#         return result
-#
-#     def draw(self):
-#         self.tbl.drawOn(self.canv, 0, 0)
-#         self._draw_connectors()
-#
-#     # ── geometry helpers ──────────────────────────────────────────────────
-#
-#     def _row_geom(self, row_idx_from_top):
-#         """Return (center_y, top_y, bot_y) for a data row (0 = header row)."""
-#         rp = self.tbl._rowpositions
-#         N  = len(self.rows) + 1        # total rows: 1 header + N data
-#         bot = rp[N - 1 - row_idx_from_top]
-#         top = rp[N     - row_idx_from_top]
-#         return (bot + top) / 2, top, bot
-#
-#     def _x_vline(self, level):
-#         """Centre-X of the vertical line for depth *level* (0-based)."""
-#         return self.struct_x + self._LEFT_PAD + level * self._INDENT
-#
-#     # ── main drawing pass ─────────────────────────────────────────────────
-#
-#     def _draw_connectors(self):
-#         from reportlab.lib import colors
-#
-#         c = self.canv
-#         c.saveState()
-#
-#         LINE_CLR = colors.HexColor('#888888')
-#         ASM_CLR = colors.HexColor('#1565C0')
-#
-#         c.setLineWidth(self._LINE_W)
-#
-#         # Draw connectors row by row
-#         for di, row in enumerate(self.rows):
-#             ri = di + 1  # +1 because table row 0 is header
-#
-#             depth = row['level']
-#             dlast = row.get('_depth_last', [])
-#             has_bom = row.get('_has_bom_raw', False)
-#
-#             cy, ry_top, ry_bot = self._row_geom(ri)
-#
-#             # Root row: only draw arrow if assembly
-#             if depth == 0:
-#                 if has_bom:
-#                     x_root = self._x_vline(0)
-#                     self._draw_arrow(c, x_root + 2, cy, ASM_CLR, scale=1.4)
-#                 continue
-#
-#             # ------------------------------------------------------------
-#             # 1) Draw pass-through verticals for ancestor levels
-#             # ------------------------------------------------------------
-#             c.setStrokeColor(LINE_CLR)
-#             for lev in range(depth - 1):
-#                 # if ancestor is not last sibling, its vertical continues
-#                 is_ancestor_last = dlast[lev] if lev < len(dlast) else True
-#                 if not is_ancestor_last:
-#                     xv = self._x_vline(lev)
-#                     c.line(xv, ry_bot, xv, ry_top)
-#
-#             # ------------------------------------------------------------
-#             # 2) Draw current node vertical branch
-#             # ------------------------------------------------------------
-#             parent_lev = depth - 1
-#             xv = self._x_vline(parent_lev)
-#
-#             is_last = dlast[parent_lev] if parent_lev < len(dlast) else True
-#
-#             # line comes from above into this row
-#             c.line(xv, cy, xv, ry_top)
-#
-#             # if more siblings follow, continue below too
-#             if not is_last:
-#                 c.line(xv, ry_bot, xv, cy)
-#
-#             # ------------------------------------------------------------
-#             # 3) Draw horizontal stub to the node dot
-#             # ------------------------------------------------------------
-#             xd = xv + self._INDENT * 0.65
-#             c.line(xv, cy, xd, cy)
-#
-#             # ------------------------------------------------------------
-#             # 4) Draw dot on the line for this child row
-#             # ------------------------------------------------------------
-#             dot_clr = ASM_CLR if has_bom else LINE_CLR
-#             c.setFillColor(dot_clr)
-#             c.circle(xd, cy, self._DOT_R, stroke=0, fill=1)
-#
-#             # ------------------------------------------------------------
-#             # 5) Draw arrow for assembly nodes
-#             # ------------------------------------------------------------
-#             if has_bom:
-#                 self._draw_arrow(c, xd + 2, cy, ASM_CLR, scale=1.0)
-#
-#         c.restoreState()
-#
-#     def _draw_arrow(self, c, x, y, color, scale=1.0):
-#         """Filled left-pointing arrowhead + horizontal shaft.
-#
-#         scale > 1.0 makes the root (depth-0) arrow visibly larger so that
-#         depth-1 arrows nest comfortably inside its visual span.
-#         """
-#         ah = self._ARW_H * scale
-#         hl = self._ARW_L * 0.55 * scale   # head length
-#         sl = self._ARW_L * 0.45 * scale   # shaft length
-#
-#         c.setFillColor(color)
-#         c.setStrokeColor(color)
-#         c.setLineWidth(1.1)
-#
-#         # shaft (right of the arrowhead tip)
-#         c.line(x + hl, y, x + hl + sl, y)
-#
-#         # filled triangular arrowhead pointing left
-#         p = c.beginPath()
-#         p.moveTo(x,      y)           # tip  (leftmost)
-#         p.lineTo(x + hl, y + ah)      # top-right
-#         p.lineTo(x + hl, y - ah)      # bottom-right
-#         p.close()
-#         c.drawPath(p, stroke=0, fill=1)
-
-
 # Column definitions for PDF settings dialog
 # (label, default_with_pos, default_without_pos)  — None = not shown
+# Order: left-side cols first (Position, Item No.), then right-side cols (Qty, Drawing).
+# Description width is auto-computed and not listed here.
 _PDF_COL_DEFS = [
-    ('Position',    2.0,  None),
-    ('Artikel-Nr./Item No.',  4,  5),
-    ('Qty',                  1,  1.5),
-    ('Drawing No.',          2,  2.5),
-    ('Bezeichnung / Designation', 9,  10),
+    ('Position',              2.0,  None),
+    ('Artikel-Nr./Item No.',  3.8,  5.0),
+    ('Qty',                   1.0,  1.5),
+    ('Drawing No.',           1.8,  2.5),
 ]
 
 
@@ -908,6 +704,13 @@ class BOMPanel(QWidget):
         else:
             position_path = position
 
+        # Pre-filter negative-qty children BEFORE building row dict
+        # (visible_children is referenced in the row dict below)
+        visible_children = [
+            c for c in node.get('children', [])
+            if not (isinstance(c.get('qty', ''), (int, float)) and c.get('qty', '') < 0)
+        ]
+
         row = {
             'level': level,
             'position': position,
@@ -917,17 +720,12 @@ class BOMPanel(QWidget):
             'scriptnum': str(node.get('scriptnum') or '').strip(),
             'description': str(node.get('description') or '').strip(),
             'full_name': str(node.get('full_name') or '').strip(),
-            '_has_bom_raw': node.get('has_bom', False),
+            '_has_bom_raw': node.get('has_bom', False) or bool(visible_children),
             '_depth_last': list(_depth_last),
         }
 
         result = [row]
 
-        # Pre-filter negative-qty children so is_last is accurate
-        visible_children = [
-            c for c in node.get('children', [])
-            if not (isinstance(c.get('qty', ''), (int, float)) and c.get('qty', '') < 0)
-        ]
         for idx, child in enumerate(visible_children):
             is_last = (idx == len(visible_children) - 1)
             result.extend(self._flatten_bom(child, level + 1, position_path,
@@ -996,226 +794,304 @@ class BOMPanel(QWidget):
         wb.save(path)
 
     def _save_as_pdf(self, data: dict, path: str, settings: dict = None):
-        from xml.sax.saxutils import escape
-        import re
-
         from reportlab.lib.pagesizes import A4, landscape, portrait
         from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import cm
-        from reportlab.platypus import (
-            SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        )
-        from reportlab.pdfgen.canvas import Canvas as _RLCanvas
+        from reportlab.lib.units import mm, cm
+        from reportlab.pdfgen.canvas import Canvas
+        from reportlab.pdfbase.pdfmetrics import stringWidth
 
-        # ── Numbered canvas — "Page X von Y" at bottom-right ─────────
-        class _NumberedCanvas(_RLCanvas):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                self._saved_page_states: list[dict] = []
-
-            def showPage(self):
-                self._saved_page_states.append(dict(self.__dict__))
-                self._startPage()
-
-            def save(self):
-                n = len(self._saved_page_states)
-                for state in self._saved_page_states:
-                    self.__dict__.update(state)
-                    self._draw_page_number(n)
-                    _RLCanvas.showPage(self)
-                _RLCanvas.save(self)
-
-            def _draw_page_number(self, total: int):
-                self.saveState()
-                self.setFont('Helvetica', 7)
-                self.setFillColorRGB(0.4, 0.4, 0.4)
-                self.drawRightString(
-                    self._pagesize[0] - 1 * cm,
-                    0.55 * cm,
-                    f"{self._pageNumber} von {total}",
-                )
-                self.restoreState()
-
-        # ── Defaults when called without a settings dialog ────────────
+        # ── defaults ──────────────────────────────────────────────────
         if settings is None:
             settings = {
-                'header_font_size': 8,
-                'body_font_size': 8,
-                'col_widths': None,
-                'orientation': 'landscape',
+                'header_font_size': 9,
+                'body_font_size':   8,
+                'col_widths':       None,
+                'orientation':      'landscape',
             }
 
-        hdr_fs = settings.get('header_font_size', 8)
-        body_fs = settings.get('body_font_size', 8)
-        orientation = settings.get("orientation", "landscape")
-
-        meta = data.get('metadata', {})
+        fs_hdr      = settings.get('header_font_size', 9)
+        fs_body     = settings.get('body_font_size',   8)
+        orientation = settings.get('orientation',      'landscape')
         include_pos = self._chk_pdf_pos.isChecked()
 
-        # ── Column layout — Position is optional ──────────────────────
-        if include_pos:
-            col_headers = [
-                'Position',
-                'Artikel-Nr./Item No.',
-                'Qty',
-                'Drawing No.',
-                'Bezeichnung / Designation',
-            ]
-            default_widths = [2.8, 5.0, 1.4, 2.5, 11.3]
-            item_col = 1
-        else:
-            col_headers = [
-                'Artikel-Nr./Item No.',
-                'Qty',
-                'Drawing No.',
-                'Bezeichnung / Designation',
-            ]
-            default_widths = [6.6, 1.5, 2.5, 12.4]
-            item_col = 0
+        page_size = portrait(A4) if orientation == 'portrait' else landscape(A4)
+        pw, ph    = page_size
 
-        raw_widths = settings.get('col_widths') or default_widths
-        col_widths = [w * cm for w in raw_widths]
-
-        page_size = portrait(A4) if orientation == "portrait" else landscape(A4)
-
-        doc = SimpleDocTemplate(
-            path,
-            pagesize=page_size,
-            leftMargin=1 * cm,
-            rightMargin=1 * cm,
-            topMargin=1.5 * cm,
-            bottomMargin=1.5 * cm,
-        )
-
-        styles = getSampleStyleSheet()
-        story = []
-
-        title_style = ParagraphStyle(
-            'BOMTitle',
-            parent=styles['Heading2'],
-            fontSize=11,
-            spaceAfter=4,
-        )
-
-        story.append(Paragraph(
-            f"BOM Export &mdash; {escape(str(meta.get('item_no', '')))} &nbsp;|&nbsp; "
-            f"{escape(str(meta.get('description', '')))} &nbsp;|&nbsp; "
-            f"Exported: {escape(str(meta.get('exported_at', '')))}",
-            title_style,
-        ))
-        story.append(Spacer(1, 0.3 * cm))
-
+        meta = data.get('metadata', {})
         rows = self._flatten_bom(data.get('bom', {}))
 
+        # ── layout ────────────────────────────────────────────────────
+        lm      = 15 * mm          # left margin
+        rm      = 15 * mm          # right margin
+        row_h   = 7.5 * mm         # data row height
+        hdr_h   = 8 * mm           # column-header bar height
+        title_h = 18 * mm          # title block on first page only
+        bot_m   = 12 * mm          # bottom margin
+        graph_w = 22 * mm          # dedicated connector-graphic column
 
-        # ── Paragraph styles — font/color live in the cell, not in TableStyle ──
-        def _lead(fs):
-            return int(fs * 1.35)
+        # Layout (matches test_drawing_in_pdf.py style):
+        #   lm | [Position] [Item No.] | [Description — auto width] | [Graph] | [Qty] [Drawing] | rm
+        # Left-of-description fixed cols, right-of-graph fixed cols; description fills the middle.
+        if include_pos:
+            default_cw = [2.0, 3.8, 1.0, 1.8]   # Pos | Item | Qty | Drawing
+            n_left     = 2                          # columns left of description
+        else:
+            default_cw = [5.0, 1.2, 1.8]          # Item | Qty | Drawing
+            n_left     = 1
 
-        _hdr_ps = ParagraphStyle(
-            'BOMHdr',
-            fontName='Helvetica-Bold',
-            fontSize=hdr_fs,
-            leading=_lead(hdr_fs),
-            textColor=colors.white,
-            alignment=1,
-        )
+        raw_cw = settings.get('col_widths')
+        if raw_cw and len(raw_cw) >= len(default_cw):
+            cw_vals = [w * cm for w in raw_cw[:len(default_cw)]]
+        else:
+            cw_vals = [w * cm for w in default_cw]
 
-        _norm_ps = ParagraphStyle(
-            'BOMCell',
-            fontName='Helvetica',
-            fontSize=body_fs,
-            leading=_lead(body_fs),
-            alignment=0,
-        )
+        left_cw_pt = cw_vals[:n_left]        # Pos [, Item] — left of description
+        qty_w_pt   = cw_vals[n_left]         # Qty  — right of graph
+        drw_w_pt   = cw_vals[n_left + 1]    # Drawing No. — rightmost
 
-        _bold_ps = ParagraphStyle(
-            'BOMCellB',
-            fontName='Helvetica-Bold',
-            fontSize=body_fs,
-            leading=_lead(body_fs),
-            alignment=0,
-        )
+        # x-positions — right side anchored to page right margin
+        table_right = pw - rm
+        x_drw       = table_right - drw_w_pt         # Drawing No. starts here
+        x_qty       = x_drw - qty_w_pt               # Qty starts here
+        x_grph      = x_qty - graph_w                # graph column starts here
 
-        def _clean_text(text):
-            txt = '' if text is None else str(text)
-            txt = re.sub(r'[\x00-\x08\x0B-\x1F\x7F]', '', txt)
-            return escape(txt)
+        # Left-side x-positions
+        xs_left = [lm]
+        for w in left_cw_pt:
+            xs_left.append(xs_left[-1] + w)
 
-        def _p(text, style):
-            return Paragraph(_clean_text(text), style)
+        x_desc  = xs_left[-1]                        # Description starts after last left col
+        desc_w  = x_grph - x_desc                   # Description fills remaining space
 
-        def _p_html(text, style):
-            txt = '' if text is None else str(text)
-            txt = re.sub(r'[\x00-\x08\x0B-\x1F\x7F]', '', txt)
-            # keep allowed <br/> tags, escape everything else first
-            txt = escape(txt).replace('&lt;br/&gt;', '<br/>').replace('&lt;br&gt;', '<br/>')
-            return Paragraph(txt, style)
+        if include_pos:
+            left_hdr_labels = ['Position', 'Artikel-Nr./Item No.']
+        else:
+            left_hdr_labels = ['Artikel-Nr./Item No.']
 
-        table_data = [[_p(h, _hdr_ps) for h in col_headers]]
+        # ── connector spine positions ──────────────────────────────────
+        # Level 0 = rightmost spine; each deeper level steps LEFT by 6 mm.
+        # Matches the test-script style: x_v2 (level 0) > x_v1 (level 1).
+        def spine_x(level: int) -> float:
+            return (x_grph + graph_w - 5 * mm) - level * 6 * mm
 
-        for row in rows:
-            depth = row['level']
-            st = _bold_ps if depth == 0 else _norm_ps
-            qty_str = _fmt_qty(row['qty'])
+        # ── colors ────────────────────────────────────────────────────
+        line_clr = colors.HexColor('#888888')
+        asm_clr  = colors.HexColor('#2d74da')
+        grid_clr = colors.HexColor('#e0e0e0')
 
-            description_de = str(row.get('description') or '').strip()
-            designation_en = str(row.get('full_name') or '').strip()
+        # ── helpers ───────────────────────────────────────────────────
+        def fit_text(text, max_w, font, size):
+            """Truncate *text* so it fits in *max_w* points; append '…' if cut."""
+            if not text:
+                return ''
+            if stringWidth(text, font, size) <= max_w:
+                return text
+            while text and stringWidth(text + '\u2026', font, size) > max_w:
+                text = text[:-1]
+            return (text + '\u2026') if text else ''
 
-            if description_de and designation_en:
-                if designation_en == description_de:
-                    desc_cell = description_de
+        def draw_arrow(c, x_spine, y):
+            """Left-pointing arrow. Shaft ends at x_spine; tip points left."""
+            x_tip = x_grph + 2 * mm          # tip always near left edge of graph col
+            ah    = 1.5 * mm
+            if x_spine <= x_tip + ah:         # not enough room — skip
+                return
+            c.setStrokeColor(asm_clr)
+            c.setLineWidth(1.0)
+            c.line(x_tip + ah, y, x_spine, y)            # shaft
+            c.line(x_tip, y, x_tip + ah, y + ah * 0.8)  # upper barb
+            c.line(x_tip, y, x_tip + ah, y - ah * 0.8)  # lower barb
+
+        def draw_dot(c, x, y, r=2.0, color=None):
+            clr = color or line_clr
+            c.setFillColor(clr)
+            c.setStrokeColor(clr)
+            c.circle(x, y, r, fill=1, stroke=0)
+
+        def draw_connectors(c, page_rows, centers):
+            """
+            Draw vertical spines, left-pointing arrows, and dots for one page.
+            Follows the same two-pass approach as test_drawing_in_pdf.py:
+              Pass 1 — vertical spine from each assembly to its last direct child.
+              Pass 2 — arrow for every assembly, dot on parent spine for every
+                        non-root row.
+            """
+            n = len(page_rows)
+            c.saveState()
+
+            # Pass 1: vertical spines
+            for di, row in enumerate(page_rows):
+                if not row.get('_has_bom_raw', False):
+                    continue
+                depth = row['level']
+                sx    = spine_x(depth)
+                last_child_cy = None
+                for dj in range(di + 1, n):
+                    cdepth = page_rows[dj]['level']
+                    if cdepth == depth + 1:
+                        last_child_cy = centers[dj]
+                    elif cdepth <= depth:
+                        break
+                if last_child_cy is not None:
+                    clr = asm_clr if depth == 0 else line_clr
+                    c.setStrokeColor(clr)
+                    c.setLineWidth(0.8)
+                    c.line(sx, centers[di], sx, last_child_cy)
+
+            # Pass 2: arrows + dots
+            for di, row in enumerate(page_rows):
+                depth   = row['level']
+                has_bom = row.get('_has_bom_raw', False)
+                cy      = centers[di]
+                if has_bom:
+                    draw_arrow(c, spine_x(depth), cy)  # shaft ends at spine, tip→left
+                if depth > 0:
+                    draw_dot(c, spine_x(depth - 1), cy,
+                             color=asm_clr if has_bom else line_clr)
+
+            c.restoreState()
+
+        # ── pagination ────────────────────────────────────────────────
+        usable_first = ph - bot_m - title_h - hdr_h
+        usable_other = ph - bot_m - 8 * mm  - hdr_h
+        rows_fp = max(1, int(usable_first / row_h))
+        rows_op = max(1, int(usable_other / row_h))
+
+        pages = []
+        idx = 0
+        while idx < len(rows):
+            cap = rows_fp if not pages else rows_op
+            pages.append(rows[idx: idx + cap])
+            idx += cap
+        if not pages:
+            pages = [[]]
+        n_pages = len(pages)
+
+        # ── draw ──────────────────────────────────────────────────────
+        c = Canvas(path, pagesize=page_size)
+
+        for pi, page_rows in enumerate(pages):
+            is_first = (pi == 0)
+
+            # Title block (first page only)
+            if is_first:
+                ty = ph - 8 * mm
+                c.setFont('Helvetica-Bold', 11)
+                c.setFillColor(colors.black)
+                c.drawString(lm, ty,
+                    f"BOM Export \u2014 {meta.get('item_no', '')} "
+                    f"| {meta.get('description', '')}")
+                ty -= 6 * mm
+                c.setFont('Helvetica', 8)
+                c.setFillColor(colors.HexColor('#555555'))
+                c.drawString(lm, ty,
+                    f"Exported: {meta.get('exported_at', '')}  "
+                    f"\u2022  Items: {meta.get('total_items', '')}")
+                hdr_top = ph - title_h
+            else:
+                hdr_top = ph - 8 * mm
+
+            # Column-header — plain style matching test_drawing_in_pdf.py
+            hdr_y = hdr_top - hdr_h + 2.5
+            c.setFont('Helvetica-Bold', fs_hdr)
+            c.setFillColor(colors.black)
+            for lbl, xc in zip(left_hdr_labels, xs_left):
+                c.drawString(xc + 2, hdr_y, lbl)
+            c.drawString(x_desc + 2, hdr_y, 'Bezeichnung / Designation')
+            c.drawString(x_qty  + 2, hdr_y, 'St.')
+            c.drawString(x_drw  + 2, hdr_y, 'Drawing No.')
+            # Gray underline below header
+            c.setStrokeColor(colors.HexColor('#cfcfcf'))
+            c.setLineWidth(0.8)
+            c.line(lm, hdr_top - hdr_h, table_right, hdr_top - hdr_h)
+
+            # Row y-positions: text baseline sits at mid-height of each band
+            y_top       = hdr_top - hdr_h
+            y_positions = [y_top - (i + 0.5) * row_h for i in range(len(page_rows))]
+            centers     = [y + 0.5 for y in y_positions]   # slight lift for dots/arrows
+
+            # Data rows
+            for i, row in enumerate(page_rows):
+                y     = y_positions[i]
+                depth = row['level']
+                fnt   = 'Helvetica-Bold' if depth == 0 else 'Helvetica'
+
+                # Row bottom separator — light gray line, no background fill
+                c.setStrokeColor(colors.HexColor('#e6e6e6'))
+                c.setLineWidth(0.6)
+                c.line(lm, y - row_h * 0.55, table_right, y - row_h * 0.55)
+
+                # Cell text
+                c.setFillColor(colors.black)
+                c.setFont(fnt, fs_body)
+
+                # Left-side cells (Position [, Item No.])
+                if include_pos:
+                    left_vals = [
+                        str(row.get('position_path') or row.get('position') or ''),
+                        str(row['item_no']),
+                    ]
                 else:
-                    desc_cell = f"{description_de}<br/>{designation_en}"
-            else:
-                desc_cell = description_de or designation_en
+                    left_vals = [str(row['item_no'])]
+                for val, xc, cw in zip(left_vals, xs_left, left_cw_pt):
+                    c.drawString(xc + 2, y, fit_text(val, cw - 4, fnt, fs_body))
 
-            # Use hierarchical position path in PDF
-            pos_value = row.get('position_path') or row.get('position') or ''
+                # Description — German on top line, English below
+                desc_de = str(row.get('description') or '').strip()
+                desc_en = str(row.get('full_name')   or '').strip()
+                if desc_de and desc_en and desc_de != desc_en:
+                    fs_en = max(fs_body - 1, 5)
+                    c.setFont(fnt, fs_body)
+                    c.drawString(x_desc + 2, y + fs_body * 0.4,
+                                 fit_text(desc_de, desc_w - 4, fnt, fs_body))
+                    c.setFont(fnt, fs_en)
+                    c.setFillColor(colors.HexColor('#555555'))
+                    c.drawString(x_desc + 2, y - fs_en * 0.9,
+                                 fit_text(desc_en, desc_w - 4, fnt, fs_en))
+                    c.setFillColor(colors.black)
+                    c.setFont(fnt, fs_body)
+                else:
+                    c.drawString(x_desc + 2, y,
+                                 fit_text(desc_de or desc_en, desc_w - 4, fnt, fs_body))
 
-            if include_pos:
-                table_data.append([
-                    _p(pos_value, st),
-                    _p(row['item_no'], st),
-                    _p(qty_str, st),
-                    _p(row['scriptnum'], st),
-                    _p_html(desc_cell, st),
-                ])
-            else:
-                table_data.append([
-                    _p(row['item_no'], st),
-                    _p(qty_str, st),
-                    _p(row['scriptnum'], st),
-                    _p_html(desc_cell, st),
-                ])
+                # Right-side cells (Qty, Drawing No.) — after graph column
+                c.drawString(x_qty + 2, y,
+                             fit_text(_fmt_qty(row['qty']), qty_w_pt - 4, fnt, fs_body))
+                c.drawString(x_drw + 2, y,
+                             fit_text(str(row['scriptnum']), drw_w_pt - 4, fnt, fs_body))
 
-        style_cmds = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1565C0')),
-            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ]
+            # Bottom table border
+            if page_rows:
+                last_y = y_positions[-1] - row_h * 0.55
+                c.setStrokeColor(colors.HexColor('#cfcfcf'))
+                c.setLineWidth(0.8)
+                c.line(lm, last_y, table_right, last_y)
 
-        for i, row in enumerate(rows):
-            depth = row['level']
-            hex_col = _DEPTH_COLORS[min(depth, len(_DEPTH_COLORS) - 1)]
-            style_cmds.append(
-                ('BACKGROUND', (0, i + 1), (-1, i + 1), colors.HexColor(hex_col))
-            )
-        #     # Indent the item-number cell to show hierarchy depth
-        #     style_cmds.append(
-        #         ('LEFTPADDING', (item_col, i + 1), (item_col, i + 1), 3 + depth * 10)
-        #     )
+            # Vertical column dividers
+            div_top = hdr_top
+            div_bot = (y_positions[-1] - row_h * 0.55) if page_rows else (hdr_top - hdr_h)
+            c.setStrokeColor(colors.HexColor('#cfcfcf'))
+            c.setLineWidth(0.4)
+            c.line(lm,          div_top, lm,          div_bot)
+            c.line(table_right, div_top, table_right, div_bot)
+            for xc in xs_left[1:]:
+                c.line(xc, div_top, xc, div_bot)
+            c.line(x_desc,  div_top, x_desc,  div_bot)
+            c.line(x_grph,  div_top, x_grph,  div_bot)
+            c.line(x_qty,   div_top, x_qty,   div_bot)
+            c.line(x_drw,   div_top, x_drw,   div_bot)
 
-        tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-        tbl.setStyle(TableStyle(style_cmds))
-        story.append(tbl)
+            # Connector graphics (arrows + spines + dots) in graph column
+            draw_connectors(c, page_rows, centers)
 
-        doc.build(story, canvasmaker=_NumberedCanvas)
+            # Page number
+            c.setFont('Helvetica', 7)
+            c.setFillColorRGB(0.4, 0.4, 0.4)
+            c.drawRightString(pw - rm, 4 * mm, f"Page {pi + 1} von {n_pages}")
+
+            c.showPage()
+
+        c.save()
 
     # ------------------------------------------------------------------ check logic
     def _on_item_check_changed(self, item: QTreeWidgetItem, column: int):

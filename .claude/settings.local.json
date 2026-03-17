@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /h/Python_projects/BOM_APP/.venv/lib/python*/site-packages/)",
+      "Bash(pip list --path /h/Python_projects/BOM_APP/.venv/Lib/site-packages)",
+      "Bash(git -C /h/Python_projects/BOM_APP/ log --oneline)",
+      "Bash(if not exist \"H:\\\\Python_projects\\\\BOM_APP\\\\database\" mkdir \"H:\\\\Python_projects\\\\BOM_APP\\\\database\")",
+      "Bash(ls H:/Python_projects/BOM_APP/*.py)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls H:/Python_projects/BOM_APP/.venv/Scripts/python*)",
+      "Bash(cmd /c \"H:\\\\Python_projects\\\\BOM_APP\\\\.venv\\\\Scripts\\\\python.exe H:\\\\Python_projects\\\\BOM_APP\\\\probe_zgpos.py\")",
+      "Bash(cmd /c \"H:\\\\Python_projects\\\\BOM_APP\\\\.venv\\\\Scripts\\\\python.exe H:\\\\Python_projects\\\\BOM_APP\\\\probe_zgpos.py > H:\\\\Python_projects\\\\BOM_APP\\\\probe_output.txt 2>&1\")",
+      "Bash(if not exist \"H:\\\\Python_projects\\\\BOM_APP\\\\tests\" mkdir \"H:\\\\Python_projects\\\\BOM_APP\\\\tests\")",
+      "Bash(cmd /c \"if not exist H:\\\\Python_projects\\\\BOM_APP\\\\tests mkdir H:\\\\Python_projects\\\\BOM_APP\\\\tests && echo created\")",
+      "Bash(cmd /c \"H:\\\\Python_projects\\\\BOM_APP\\\\.venv\\\\Scripts\\\\python.exe H:\\\\Python_projects\\\\BOM_APP\\\\tests\\\\test_article_7959743.py > H:\\\\Python_projects\\\\BOM_APP\\\\tests\\\\test_article_7959743_results.txt 2>&1\")",
+      "Bash(find \"H:/Python_projects/BOM_APP\" -type f -name \"*.py\" -not -path \"*/.venv/*\" -not -path \"*/__pycache__/*\" -not -path \"*/.idea/*\" -not -path \"*/build/*\" -not -path \"*/dist/*\" -exec wc -l {} +)",
+      "Bash(xargs wc:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''ui/bom_panel.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''ui/bom_panel.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''ui/bom_panel.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''OK''\\)\")"
+    ]
+  }
+}
