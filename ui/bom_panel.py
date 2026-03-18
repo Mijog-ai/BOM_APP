@@ -112,12 +112,12 @@ class _BOMTreeItem(QTreeWidgetItem):
 # Background colors by BOM depth (index = depth, clamped at last entry)
 _DEPTH_COLORS = [
     '#FFFFFF',  # depth 0 — root
-    '#F2F2F2',  # depth 1
-    '#E5E5E5',  # depth 2
-    '#D8D8D8',  # depth 3
-    '#CBCBCB',  # depth 4
-    '#BEBEBE',  # depth 5
-    '#B2B2B2',  # depth 6+
+    '#E6E6E6',  # depth 1  (Δ25)
+    '#CCCCCC',  # depth 2  (Δ26)
+    '#B3B3B3',  # depth 3  (Δ25)
+    '#999999',  # depth 4  (Δ26)
+    '#808080',  # depth 5  (Δ25)
+    '#666666',  # depth 6+ (Δ26)
 ]
 
 # Column definitions for PDF settings dialog
@@ -303,7 +303,7 @@ class BOMPanel(QWidget):
         )
 
         self._chk_pdf_pos = QCheckBox("Include Position col (PDF)")
-        self._chk_pdf_pos.setChecked(True)
+        self._chk_pdf_pos.setChecked(False)
         self._chk_pdf_pos.setToolTip(
             "PDF only — Checked  → include the Position column\n"
             "           Unchecked → omit Position; gives more space to Description"
@@ -724,7 +724,7 @@ class BOMPanel(QWidget):
             'scriptnum': str(node.get('scriptnum') or '').strip(),
             'description': str(node.get('description') or '').strip(),
             'full_name': str(node.get('full_name') or '').strip(),
-            '_has_bom_raw': node.get('has_bom', False) or bool(visible_children),
+            '_has_bom_raw': bool(visible_children),
             '_depth_last': list(_depth_last),
         }
 
@@ -770,7 +770,7 @@ class BOMPanel(QWidget):
             cell.alignment = Alignment(horizontal='center')
 
         # ── Data rows ─────────────────────────────────────────────────
-        thin = Side(style='thin', color='CCCCCC')
+        thin = Side(style='thin', color='555555')
         grid = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         for row in rows:
@@ -807,12 +807,12 @@ class BOMPanel(QWidget):
         # ── depth-band colors ─────────────────────────────────────────
         _DEPTH_COLORS = [
             '#FFFFFF',  # depth 0 — root
-            '#F2F2F2',  # depth 1
-            '#E5E5E5',  # depth 2
-            '#D8D8D8',  # depth 3
-            '#CBCBCB',  # depth 4
-            '#BEBEBE',  # depth 5
-            '#B2B2B2',  # depth 6+
+            '#E6E6E6',  # depth 1  (Δ25)
+            '#CCCCCC',  # depth 2  (Δ26)
+            '#B3B3B3',  # depth 3  (Δ25)
+            '#999999',  # depth 4  (Δ26)
+            '#808080',  # depth 5  (Δ25)
+            '#666666',  # depth 6+ (Δ26)
         ]
 
         # ── defaults ──────────────────────────────────────────────────
@@ -898,10 +898,10 @@ class BOMPanel(QWidget):
         x_arrow_tip = x_conn_zone + 1.5 * mm
 
         # ── colors ────────────────────────────────────────────────────
-        line_clr   = colors.HexColor('#888888')
+        line_clr   = colors.HexColor('#000000')
         asm_clr    = colors.HexColor('#2d74da')
         hdr_bg_clr = colors.HexColor('#1565C0')
-        grid_clr   = colors.HexColor('#CCCCCC')
+        grid_clr   = colors.HexColor('#555555')
 
         # ── helpers ───────────────────────────────────────────────────
         def fit_text(text, max_w, font, size):
@@ -955,15 +955,14 @@ class BOMPanel(QWidget):
                 if not all_rows[di].get('_has_bom_raw', False):
                     continue
                 depth = all_rows[di]['level']
-                last_ci = None
+                last_desc = None
                 for dj in range(di + 1, n):
                     cd = all_rows[dj]['level']
-                    if cd == depth + 1:
-                        last_ci = dj
-                    elif cd <= depth:
+                    if cd <= depth:
                         break
-                if last_ci is not None:
-                    lc_map[di] = last_ci
+                    last_desc = dj   # any descendant, not just direct children
+                if last_desc is not None:
+                    lc_map[di] = last_desc
             return lc_map
 
         last_child_map = build_last_child_map(rows)
@@ -1001,12 +1000,12 @@ class BOMPanel(QWidget):
                 sx    = spine_x(depth)
                 clr   = asm_clr if depth == 0 else line_clr
 
-                # Find the last direct child of gi that appears on THIS page
+                # Find the last descendant of gi that appears on THIS page
                 last_on_page_local = None
                 for local_i, gr in enumerate(page_rows):
                     gi_of_row = page_start_idx + local_i
-                    # Is this row a direct child of gi?
-                    if (gr['level'] == depth + 1 and
+                    # Is this row any descendant of gi?
+                    if (gr['level'] > depth and
                             gi_of_row <= lci):
                         # Make sure it is actually a descendant of gi
                         # (no sibling of gi in between)
@@ -1037,18 +1036,17 @@ class BOMPanel(QWidget):
                     continue
                 depth = row['level']
                 sx    = spine_x(depth)
-                last_child_cy = None
+                last_desc_cy = None
                 for dj in range(di + 1, n):
                     cdepth = page_rows[dj]['level']
-                    if cdepth == depth + 1:
-                        last_child_cy = centers[dj]
-                    elif cdepth <= depth:
+                    if cdepth <= depth:
                         break
-                if last_child_cy is not None:
+                    last_desc_cy = centers[dj]  # any descendant, not just direct child
+                if last_desc_cy is not None:
                     clr = asm_clr if depth == 0 else line_clr
                     c.setStrokeColor(clr)
                     c.setLineWidth(0.8)
-                    c.line(spine_x(depth), centers[di], sx, last_child_cy)
+                    c.line(spine_x(depth), centers[di], sx, last_desc_cy)
 
             # ── Pass 2: arrows + dots ─────────────────────────────────
             for di, row in enumerate(page_rows):
