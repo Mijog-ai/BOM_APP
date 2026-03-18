@@ -800,6 +800,17 @@ class BOMPanel(QWidget):
         from reportlab.pdfgen.canvas import Canvas
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
+        # ── depth-band colors ─────────────────────────────────────────
+        _DEPTH_COLORS = [
+            '#FFFFFF',  # depth 0 — root
+            '#F2F2F2',  # depth 1
+            '#E5E5E5',  # depth 2
+            '#D8D8D8',  # depth 3
+            '#CBCBCB',  # depth 4
+            '#BEBEBE',  # depth 5
+            '#B2B2B2',  # depth 6+
+        ]
+
         # ── defaults ──────────────────────────────────────────────────
         if settings is None:
             settings = {
@@ -819,24 +830,27 @@ class BOMPanel(QWidget):
 
         meta = data.get('metadata', {})
         rows = self._flatten_bom(data.get('bom', {}))
+        # Skip root node
+        if rows and rows[0].get('level') == 0:
+            rows = rows[1:]
 
         # ── layout ────────────────────────────────────────────────────
-        lm      = 15 * mm          # left margin
-        rm      = 15 * mm          # right margin
-        row_h   = 7.5 * mm         # data row height
-        hdr_h   = 8 * mm           # column-header bar height
-        title_h = 18 * mm          # title block on first page only
-        bot_m   = 12 * mm          # bottom margin
-        graph_w = 22 * mm          # dedicated connector-graphic column
+        lm      = 15 * mm
+        rm      = 15 * mm
+        row_h   = max(10 * mm, fs_body * 3.8)
+        hdr_h   = max(8 * mm, fs_hdr * 3.0)
+        title_h = 18 * mm
+        bot_m   = 12 * mm
 
-        # Layout (matches test_drawing_in_pdf.py style):
-        #   lm | [Position] [Item No.] | [Description — auto width] | [Graph] | [Qty] [Drawing] | rm
-        # Left-of-description fixed cols, right-of-graph fixed cols; description fills the middle.
+        # ── connector zone carved out of the RIGHT side of Designation ──
+        # No separate graph column — connectors live inside the desc cell.
+        conn_w  = 22 * mm   # width reserved on right of description for connectors
+
         if include_pos:
-            default_cw = [2.0, 3.8, 1.0, 1.8]   # Pos | Item | Qty | Drawing
-            n_left     = 2                          # columns left of description
+            default_cw = [2.0, 3.8, 1.0, 1.8]  # Pos | Item | Qty | Drawing
+            n_left     = 2
         else:
-            default_cw = [5.0, 1.2, 1.8]          # Item | Qty | Drawing
+            default_cw = [5.0, 1.2, 1.8]        # Item | Qty | Drawing
             n_left     = 1
 
         raw_cw = settings.get('col_widths')
@@ -845,43 +859,48 @@ class BOMPanel(QWidget):
         else:
             cw_vals = [w * cm for w in default_cw]
 
-        left_cw_pt = cw_vals[:n_left]        # Pos [, Item] — left of description
-        qty_w_pt   = cw_vals[n_left]         # Qty  — right of graph
-        drw_w_pt   = cw_vals[n_left + 1]    # Drawing No. — rightmost
+        left_cw_pt = cw_vals[:n_left]
+        qty_w_pt   = cw_vals[n_left]
+        drw_w_pt   = cw_vals[n_left + 1]
 
-        # x-positions — right side anchored to page right margin
         table_right = pw - rm
-        x_drw       = table_right - drw_w_pt         # Drawing No. starts here
-        x_qty       = x_drw - qty_w_pt               # Qty starts here
-        x_grph      = x_qty - graph_w                # graph column starts here
+        x_drw       = table_right - drw_w_pt
+        x_qty       = x_drw - qty_w_pt
 
-        # Left-side x-positions
         xs_left = [lm]
         for w in left_cw_pt:
             xs_left.append(xs_left[-1] + w)
 
-        x_desc  = xs_left[-1]                        # Description starts after last left col
-        desc_w  = x_grph - x_desc                   # Description fills remaining space
+        x_desc = xs_left[-1]           # description column starts here
+        # Full description column ends at x_qty (no separate graph col divider)
+        desc_col_right = x_qty
+        desc_col_w     = desc_col_right - x_desc
+
+        # Text uses the left portion; connectors use the right conn_w portion
+        desc_text_w  = desc_col_w - conn_w - 2 * mm   # usable text width
+        x_conn_zone  = desc_col_right - conn_w         # connector zone left edge
 
         if include_pos:
             left_hdr_labels = ['Position', 'Artikel-Nr./Item No.']
         else:
             left_hdr_labels = ['Artikel-Nr./Item No.']
 
-        # ── connector spine positions ──────────────────────────────────
-        # Level 0 = rightmost spine; each deeper level steps LEFT by 6 mm.
-        # Matches the test-script style: x_v2 (level 0) > x_v1 (level 1).
+        # ── connector spine x-positions (within conn_zone) ────────────
+        # Level 0 spine = rightmost inside zone; deeper levels step LEFT 5 mm.
         def spine_x(level: int) -> float:
-            return (x_grph + graph_w - 5 * mm) - level * 6 * mm
+            return (desc_col_right - 4 * mm) - level * 3 * mm
+
+        # Arrow tip always at left edge of connector zone
+        x_arrow_tip = x_conn_zone + 1.5 * mm
 
         # ── colors ────────────────────────────────────────────────────
-        line_clr = colors.HexColor('#888888')
-        asm_clr  = colors.HexColor('#2d74da')
-        grid_clr = colors.HexColor('#e0e0e0')
+        line_clr   = colors.HexColor('#888888')
+        asm_clr    = colors.HexColor('#2d74da')
+        hdr_bg_clr = colors.HexColor('#1565C0')
+        grid_clr   = colors.HexColor('#CCCCCC')
 
         # ── helpers ───────────────────────────────────────────────────
         def fit_text(text, max_w, font, size):
-            """Truncate *text* so it fits in *max_w* points; append '…' if cut."""
             if not text:
                 return ''
             if stringWidth(text, font, size) <= max_w:
@@ -890,17 +909,27 @@ class BOMPanel(QWidget):
                 text = text[:-1]
             return (text + '\u2026') if text else ''
 
+        def draw_row_bg(c, row_top, depth):
+            hex_col = _DEPTH_COLORS[min(depth, len(_DEPTH_COLORS) - 1)]
+            c.setFillColor(colors.HexColor(hex_col))
+            c.rect(lm, row_top - row_h, table_right - lm, row_h, fill=1, stroke=0)
+
+        def draw_grid_line(c, x1, y1, x2, y2, lw=0.3):
+            c.setStrokeColor(grid_clr)
+            c.setLineWidth(lw)
+            c.line(x1, y1, x2, y2)
+
         def draw_arrow(c, x_spine, y):
-            """Left-pointing arrow. Shaft ends at x_spine; tip points left."""
-            x_tip = x_grph + 2 * mm          # tip always near left edge of graph col
-            ah    = 1.5 * mm
-            if x_spine <= x_tip + ah:         # not enough room — skip
+            """Left-pointing arrow inside connector zone."""
+            ah = 1.5 * mm
+            x_tip = x_arrow_tip
+            if x_spine <= x_tip + ah:
                 return
             c.setStrokeColor(asm_clr)
             c.setLineWidth(1.0)
-            c.line(x_tip + ah, y, x_spine, y)            # shaft
-            c.line(x_tip, y, x_tip + ah, y + ah * 0.8)  # upper barb
-            c.line(x_tip, y, x_tip + ah, y - ah * 0.8)  # lower barb
+            c.line(x_tip + ah, y, x_spine, y)
+            c.line(x_tip, y, x_tip + ah, y + ah * 0.8)
+            c.line(x_tip, y, x_tip + ah, y - ah * 0.8)
 
         def draw_dot(c, x, y, r=2.0, color=None):
             clr = color or line_clr
@@ -908,18 +937,97 @@ class BOMPanel(QWidget):
             c.setStrokeColor(clr)
             c.circle(x, y, r, fill=1, stroke=0)
 
-        def draw_connectors(c, page_rows, centers):
+        # ── FIX 2: cross-page spine continuation ──────────────────────
+        # Build a global index so we can find, for any assembly row, the
+        # global index of its last direct child anywhere in the full list.
+        def build_last_child_map(all_rows):
             """
-            Draw vertical spines, left-pointing arrows, and dots for one page.
-            Follows the same two-pass approach as test_drawing_in_pdf.py:
-              Pass 1 — vertical spine from each assembly to its last direct child.
-              Pass 2 — arrow for every assembly, dot on parent spine for every
-                        non-root row.
+            Returns dict: global_row_index → global_index_of_last_direct_child
+            Only entries where a child exists are stored.
             """
-            n = len(page_rows)
+            lc_map = {}
+            n = len(all_rows)
+            for di in range(n):
+                if not all_rows[di].get('_has_bom_raw', False):
+                    continue
+                depth = all_rows[di]['level']
+                last_ci = None
+                for dj in range(di + 1, n):
+                    cd = all_rows[dj]['level']
+                    if cd == depth + 1:
+                        last_ci = dj
+                    elif cd <= depth:
+                        break
+                if last_ci is not None:
+                    lc_map[di] = last_ci
+            return lc_map
+
+        last_child_map = build_last_child_map(rows)
+
+        def draw_connectors(c, page_rows, centers, page_start_idx):
+            """
+            Draw connectors for one page.
+
+            page_start_idx: global index in `rows` of page_rows[0].
+
+            Cross-page fix:
+              Before the normal two-pass logic, we scan all ancestor spines
+              that started on a previous page but whose last child is on this
+              page or later — those spines must be drawn from the top of the
+              page data area down to their last visible child on this page.
+            """
+            n      = len(page_rows)
+            p_end  = page_start_idx + n - 1   # global idx of last row on page
+
             c.saveState()
 
-            # Pass 1: vertical spines
+            # ── Pre-pass: continue spines that cross the page boundary ──
+            # For every assembly in the GLOBAL list whose spine started
+            # before this page and whose last child is on or after this page,
+            # draw the spine segment from the top of the page to the last
+            # child visible on THIS page.
+            for gi, lci in last_child_map.items():
+                if gi >= page_start_idx:
+                    continue    # parent is on this page or later — handled by Pass 1
+                if lci < page_start_idx:
+                    continue    # entire spine finished before this page
+
+                # This spine crosses onto this page.
+                depth = rows[gi]['level']
+                sx    = spine_x(depth)
+                clr   = asm_clr if depth == 0 else line_clr
+
+                # Find the last direct child of gi that appears on THIS page
+                last_on_page_local = None
+                for local_i, gr in enumerate(page_rows):
+                    gi_of_row = page_start_idx + local_i
+                    # Is this row a direct child of gi?
+                    if (gr['level'] == depth + 1 and
+                            gi_of_row <= lci):
+                        # Make sure it is actually a descendant of gi
+                        # (no sibling of gi in between)
+                        is_desc = True
+                        for mid in range(gi + 1, gi_of_row):
+                            if rows[mid]['level'] <= depth:
+                                is_desc = False
+                                break
+                        if is_desc:
+                            last_on_page_local = local_i
+
+                if last_on_page_local is None:
+                    # No direct child on this page but spine passes through —
+                    # draw from top of data area to bottom of page data area.
+                    y_from = centers[0] + row_h * 0.5   # top of first row band
+                    y_to   = centers[-1] - row_h * 0.5  # bottom of last row band
+                else:
+                    y_from = centers[0] + row_h * 0.5
+                    y_to   = centers[last_on_page_local]
+
+                c.setStrokeColor(clr)
+                c.setLineWidth(0.8)
+                c.line(sx, y_from, sx, y_to)
+
+            # ── Pass 1: vertical spines for parents ON this page ──────
             for di, row in enumerate(page_rows):
                 if not row.get('_has_bom_raw', False):
                     continue
@@ -936,15 +1044,15 @@ class BOMPanel(QWidget):
                     clr = asm_clr if depth == 0 else line_clr
                     c.setStrokeColor(clr)
                     c.setLineWidth(0.8)
-                    c.line(sx, centers[di], sx, last_child_cy)
+                    c.line(spine_x(depth), centers[di], sx, last_child_cy)
 
-            # Pass 2: arrows + dots
+            # ── Pass 2: arrows + dots ─────────────────────────────────
             for di, row in enumerate(page_rows):
                 depth   = row['level']
                 has_bom = row.get('_has_bom_raw', False)
                 cy      = centers[di]
                 if has_bom:
-                    draw_arrow(c, spine_x(depth), cy)  # shaft ends at spine, tip→left
+                    draw_arrow(c, spine_x(depth), cy)
                 if depth > 0:
                     draw_dot(c, spine_x(depth - 1), cy,
                              color=asm_clr if has_bom else line_clr)
@@ -961,16 +1069,16 @@ class BOMPanel(QWidget):
         idx = 0
         while idx < len(rows):
             cap = rows_fp if not pages else rows_op
-            pages.append(rows[idx: idx + cap])
+            pages.append((idx, rows[idx: idx + cap]))   # store (start_idx, slice)
             idx += cap
         if not pages:
-            pages = [[]]
+            pages = [(0, [])]
         n_pages = len(pages)
 
         # ── draw ──────────────────────────────────────────────────────
         c = Canvas(path, pagesize=page_size)
 
-        for pi, page_rows in enumerate(pages):
+        for pi, (page_start_idx, page_rows) in enumerate(pages):
             is_first = (pi == 0)
 
             # Title block (first page only)
@@ -979,53 +1087,87 @@ class BOMPanel(QWidget):
                 c.setFont('Helvetica-Bold', 11)
                 c.setFillColor(colors.black)
                 c.drawString(lm, ty,
-                    f"BOM Export \u2014 {meta.get('item_no', '')} "
-                    f"| {meta.get('description', '')}")
+                             f"BOM Export \u2014 {meta.get('item_no', '')} "
+                             f"| {meta.get('description', '')}")
                 ty -= 6 * mm
                 c.setFont('Helvetica', 8)
                 c.setFillColor(colors.HexColor('#555555'))
                 c.drawString(lm, ty,
-                    f"Exported: {meta.get('exported_at', '')}  "
-                    f"\u2022  Items: {meta.get('total_items', '')}")
+                             f"Exported: {meta.get('exported_at', '')}  "
+                             f"\u2022  Items: {meta.get('total_items', '')}")
                 hdr_top = ph - title_h
             else:
                 hdr_top = ph - 8 * mm
 
-            # Column-header — plain style matching test_drawing_in_pdf.py
-            hdr_y = hdr_top - hdr_h + 2.5
-            c.setFont('Helvetica-Bold', fs_hdr)
-            c.setFillColor(colors.black)
-            for lbl, xc in zip(left_hdr_labels, xs_left):
-                c.drawString(xc + 2, hdr_y, lbl)
-            c.drawString(x_desc + 2, hdr_y, 'Bezeichnung / Designation')
-            c.drawString(x_qty  + 2, hdr_y, 'St.')
-            c.drawString(x_drw  + 2, hdr_y, 'Drawing No.')
-            # Gray underline below header
-            c.setStrokeColor(colors.HexColor('#cfcfcf'))
-            c.setLineWidth(0.8)
-            c.line(lm, hdr_top - hdr_h, table_right, hdr_top - hdr_h)
+            # ── Blue header bar ───────────────────────────────────────
+            hdr_bot = hdr_top - hdr_h
+            c.setFillColor(hdr_bg_clr)
+            c.rect(lm, hdr_bot, table_right - lm, hdr_h, fill=1, stroke=0)
+            hdr_y = hdr_bot + (hdr_h - fs_hdr) * 0.4
 
-            # Row y-positions: text baseline sits at mid-height of each band
-            y_top       = hdr_top - hdr_h
+            def draw_hdr_label(c, text, x, max_w, y_bot, bar_h, font, size):
+                """
+                Draw header text wrapped into two lines if it doesn't fit on one.
+                y_bot = bottom of the header bar (hdr_bot). Text is vertically
+                centered inside bar_h above y_bot.
+                """
+                leading = size * 1.2
+                words   = text.split()
+                lines   = []
+                current = ''
+                for word in words:
+                    test = (current + ' ' + word).strip()
+                    if stringWidth(test, font, size) <= max_w - 4:
+                        current = test
+                    else:
+                        if current:
+                            lines.append(current)
+                        current = word
+                if current:
+                    lines.append(current)
+                lines = lines[:2]
+
+                total_h = len(lines) * leading
+                # y_bot is the baseline of the bar bottom; center text inside bar
+                y_start = y_bot + (bar_h + total_h) / 2 - leading
+                c.setFont(font, size)
+                for li, line in enumerate(lines):
+                    c.drawString(x + 2, y_start - li * leading, line)
+
+            c.setFillColor(colors.white)
+            for lbl, xc, cw in zip(left_hdr_labels, xs_left, left_cw_pt):
+                draw_hdr_label(c, lbl, xc, cw, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
+
+            draw_hdr_label(c, 'Bezeichnung / Designation',
+                           x_desc, desc_text_w, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
+            draw_hdr_label(c, 'St.',
+                           x_qty, qty_w_pt, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
+            draw_hdr_label(c, 'Drawing No.',
+                           x_drw, drw_w_pt, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
+
+            # ── Row y-positions ───────────────────────────────────────
+            y_top       = hdr_bot
             y_positions = [y_top - (i + 0.5) * row_h for i in range(len(page_rows))]
-            centers     = [y + 0.5 for y in y_positions]   # slight lift for dots/arrows
+            centers     = [y + 0.5 for y in y_positions]
+            row_tops    = [y_top - i * row_h           for i in range(len(page_rows))]
 
-            # Data rows
+            # ── Data rows ─────────────────────────────────────────────
             for i, row in enumerate(page_rows):
                 y     = y_positions[i]
+                rt    = row_tops[i]
                 depth = row['level']
                 fnt   = 'Helvetica-Bold' if depth == 0 else 'Helvetica'
 
-                # Row bottom separator — light gray line, no background fill
-                c.setStrokeColor(colors.HexColor('#e6e6e6'))
-                c.setLineWidth(0.6)
-                c.line(lm, y - row_h * 0.55, table_right, y - row_h * 0.55)
+                # Depth-colored background
+                draw_row_bg(c, rt, depth)
 
-                # Cell text
+                # Horizontal grid line at row bottom
+                draw_grid_line(c, lm, rt - row_h, table_right, rt - row_h, lw=0.3)
+
                 c.setFillColor(colors.black)
                 c.setFont(fnt, fs_body)
 
-                # Left-side cells (Position [, Item No.])
+                # Left cells
                 if include_pos:
                     left_vals = [
                         str(row.get('position_path') or row.get('position') or ''),
@@ -1036,55 +1178,54 @@ class BOMPanel(QWidget):
                 for val, xc, cw in zip(left_vals, xs_left, left_cw_pt):
                     c.drawString(xc + 2, y, fit_text(val, cw - 4, fnt, fs_body))
 
-                # Description — German on top line, English below
+                # Description — German top, English below (text in left portion only)
                 desc_de = str(row.get('description') or '').strip()
                 desc_en = str(row.get('full_name')   or '').strip()
                 if desc_de and desc_en and desc_de != desc_en:
                     fs_en = max(fs_body - 1, 5)
                     c.setFont(fnt, fs_body)
-                    c.drawString(x_desc + 2, y + fs_body * 0.4,
-                                 fit_text(desc_de, desc_w - 4, fnt, fs_body))
+                    c.setFillColor(colors.black)
+                    c.drawString(x_desc + 2, y + row_h * 0.22,
+                                 fit_text(desc_de, desc_text_w, fnt, fs_body))
                     c.setFont(fnt, fs_en)
                     c.setFillColor(colors.HexColor('#555555'))
-                    c.drawString(x_desc + 2, y - fs_en * 0.9,
-                                 fit_text(desc_en, desc_w - 4, fnt, fs_en))
+                    c.drawString(x_desc + 2, y - row_h * 0.28,
+                                 fit_text(desc_en, desc_text_w, fnt, fs_en))
                     c.setFillColor(colors.black)
                     c.setFont(fnt, fs_body)
                 else:
                     c.drawString(x_desc + 2, y,
-                                 fit_text(desc_de or desc_en, desc_w - 4, fnt, fs_body))
+                                 fit_text(desc_de or desc_en, desc_text_w, fnt, fs_body))
 
-                # Right-side cells (Qty, Drawing No.) — after graph column
+                # Right cells
                 c.drawString(x_qty + 2, y,
-                             fit_text(_fmt_qty(row['qty']), qty_w_pt - 4, fnt, fs_body))
+                             fit_text(_fmt_qty(row['qty']),   qty_w_pt - 4, fnt, fs_body))
                 c.drawString(x_drw + 2, y,
-                             fit_text(str(row['scriptnum']), drw_w_pt - 4, fnt, fs_body))
+                             fit_text(str(row['scriptnum']),  drw_w_pt - 4, fnt, fs_body))
 
-            # Bottom table border
+            # ── Outer border + vertical dividers ─────────────────────
             if page_rows:
-                last_y = y_positions[-1] - row_h * 0.55
-                c.setStrokeColor(colors.HexColor('#cfcfcf'))
-                c.setLineWidth(0.8)
-                c.line(lm, last_y, table_right, last_y)
+                table_bot = row_tops[-1] - row_h
+            else:
+                table_bot = hdr_bot
 
-            # Vertical column dividers
-            div_top = hdr_top
-            div_bot = (y_positions[-1] - row_h * 0.55) if page_rows else (hdr_top - hdr_h)
-            c.setStrokeColor(colors.HexColor('#cfcfcf'))
-            c.setLineWidth(0.4)
-            c.line(lm,          div_top, lm,          div_bot)
-            c.line(table_right, div_top, table_right, div_bot)
+            c.setStrokeColor(grid_clr)
+            c.setLineWidth(0.8)
+            c.rect(lm, table_bot, table_right - lm, hdr_top - table_bot, fill=0, stroke=1)
+
+            c.setLineWidth(0.3)
             for xc in xs_left[1:]:
-                c.line(xc, div_top, xc, div_bot)
-            c.line(x_desc,  div_top, x_desc,  div_bot)
-            c.line(x_grph,  div_top, x_grph,  div_bot)
-            c.line(x_qty,   div_top, x_qty,   div_bot)
-            c.line(x_drw,   div_top, x_drw,   div_bot)
+                draw_grid_line(c, xc, hdr_top, xc, table_bot)
+            draw_grid_line(c, x_desc, hdr_top, x_desc, table_bot)
+            # NO divider for x_grph — connector zone is inside description col
+            draw_grid_line(c, x_qty,  hdr_top, x_qty,  table_bot)
+            draw_grid_line(c, x_drw,  hdr_top, x_drw,  table_bot)
 
-            # Connector graphics (arrows + spines + dots) in graph column
-            draw_connectors(c, page_rows, centers)
+            # ── Connectors (inside Designation col right portion) ─────
+            if page_rows:
+                draw_connectors(c, page_rows, centers, page_start_idx)
 
-            # Page number
+            # ── Page number ───────────────────────────────────────────
             c.setFont('Helvetica', 7)
             c.setFillColorRGB(0.4, 0.4, 0.4)
             c.drawRightString(pw - rm, 4 * mm, f"Page {pi + 1} von {n_pages}")
