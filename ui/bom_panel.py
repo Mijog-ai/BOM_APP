@@ -522,12 +522,15 @@ class BOMPanel(QWidget):
         self._do_export()
 
     def _expand_all_placeholders(self, item: QTreeWidgetItem) -> int:
-        """Recursively fire loaders for checked nodes whose children are not yet loaded.
-        Returns the number of loaders started."""
+        """Recursively fire loaders for expanded+checked nodes whose children are not yet loaded.
+        Skips nodes the user never opened (not expanded). Returns the number of loaders started."""
         if item is None:
             return 0
         # Skip unchecked nodes — they won't appear in the export anyway
         if item.checkState(0) == Qt.CheckState.Unchecked:
+            return 0
+        # Skip nodes the user never expanded — don't load their children for export
+        if not item.isExpanded():
             return 0
 
         fired = 0
