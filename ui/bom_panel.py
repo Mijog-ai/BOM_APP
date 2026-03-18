@@ -626,9 +626,10 @@ class BOMPanel(QWidget):
         total   = len(self._flatten_bom(bom))
         return {
             'metadata': {
-                'item_no':     self._item_input.text().strip(),
+                'item_no': self._item_input.text().strip(),
                 'description': bom.get('description', ''),
-                'dataset':     self._dataset_cb.currentText(),
+                'full_name': bom.get('full_name', ''),
+                'dataset': self._dataset_cb.currentText(),
                 'exported_at': datetime.now().isoformat(timespec='seconds'),
                 'total_items': total,
             },
@@ -1086,9 +1087,13 @@ class BOMPanel(QWidget):
                 ty = ph - 8 * mm
                 c.setFont('Helvetica-Bold', 11)
                 c.setFillColor(colors.black)
-                c.drawString(lm, ty,
-                             f"BOM Export \u2014 {meta.get('item_no', '')} "
-                             f"| {meta.get('description', '')}")
+                full_name = meta.get('full_name', '').strip()
+                title_str = (
+                        f"BOM Export \u2014 {meta.get('item_no', '')} "
+                        f"| {meta.get('description', '')}"
+                        + (f"  |  {full_name}" if full_name else '')
+                )
+                c.drawString(lm, ty, fit_text(title_str, pw - lm - rm, 'Helvetica-Bold', 11))
                 ty -= 6 * mm
                 c.setFont('Helvetica', 8)
                 c.setFillColor(colors.HexColor('#555555'))
