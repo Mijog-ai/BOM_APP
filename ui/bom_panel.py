@@ -120,15 +120,26 @@ _DEPTH_COLORS = [
     '#666666',  # depth 6+ (Δ26)
 ]
 
+
+
+_DEPTH_COLOR_pdf = [
+    '#FFFFFF',  # depth 0 — root
+    '#FFFFFF',  # depth 1  (Δ25)
+    '#FFFFFF',  # depth 2  (Δ26)
+    '#FFFFFF',  # depth 3  (Δ25)
+    '#FFFFFF',  # depth 4  (Δ26)
+    '#FFFFFF',  # depth 5  (Δ25)
+    '#FFFFFF',  # depth 6+ (Δ26)
+]
 # Column definitions for PDF settings dialog
 # (label, default_with_pos, default_without_pos)  — None = not shown
 # Order: left-side cols first (Position, Item No.), then right-side cols (Qty, Drawing).
 # Description width is auto-computed and not listed here.
 _PDF_COL_DEFS = [
-    ('Position',              2.0,  None),
-    ('Artikel-Nr./Item No.',  3.8,  5.0),
-    ('Qty',                   1.0,  1.5),
-    ('Drawing No.',           1.8,  2.5),
+    ('Position',                    2.0,  None),
+    ('Artikel-Nr./Item\u00a0No.',   3.8,  5.0),
+    ('Stück\u00a0/\u00a0Qty',       1.0,  1.5),
+    ('Draw No.',                 1.8,  2.5),
 ]
 
 
@@ -660,12 +671,9 @@ class BOMPanel(QWidget):
             'children': [],
         }
 
-        # Recurse if children have been loaded, even if the node is collapsed
-        has_real_children = any(
-            item.child(i).data(0, _ROLE_ITEM_NO) != _PLACEHOLDER
-            for i in range(item.childCount())
-        )
-        if item.isExpanded() or has_real_children:
+        # Only recurse into children if the node is currently expanded.
+        # A node that was opened then closed should NOT include its sub-children.
+        if item.isExpanded():
             for i in range(item.childCount()):
                 child = item.child(i)
                 if child.data(0, _ROLE_ITEM_NO) == _PLACEHOLDER:
@@ -805,14 +813,14 @@ class BOMPanel(QWidget):
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
         # ── depth-band colors ─────────────────────────────────────────
-        _DEPTH_COLORS = [
+        _DEPTH_COLOR_pdf = [
             '#FFFFFF',  # depth 0 — root
-            '#E6E6E6',  # depth 1  (Δ25)
-            '#CCCCCC',  # depth 2  (Δ26)
-            '#B3B3B3',  # depth 3  (Δ25)
-            '#999999',  # depth 4  (Δ26)
-            '#808080',  # depth 5  (Δ25)
-            '#666666',  # depth 6+ (Δ26)
+            '#FFFFFF',  # depth 1
+            '#FFFFFF',  # depth 2
+            '#FFFFFF',  # depth 3
+            '#FFFFFF',  # depth 4
+            '#FFFFFF',  # depth 5
+            '#FFFFFF',  # depth 6+
         ]
 
         # ── defaults ──────────────────────────────────────────────────
@@ -841,21 +849,21 @@ class BOMPanel(QWidget):
         # ── layout ────────────────────────────────────────────────────
         lm      = 15 * mm
         rm      = 15 * mm
-        row_h   = max(10 * mm, fs_body * 3.8)
-        hdr_h   = max(8 * mm, fs_hdr * 3.0)
+        # FIX 1: Reduced row height multiplier from 3.8 → 3.0, min from 10mm → 7mm
+        row_h   = max(7 * mm, fs_body * 3.0)
+        hdr_h = max(8 * mm, fs_hdr * 3.0)
         title_h = 18 * mm
         bot_m   = 12 * mm
 
         # ── connector zone carved out of the RIGHT side of Designation ──
-        # No separate graph column — connectors live inside the desc cell.
-        conn_w  = 22 * mm   # width reserved on right of description for connectors
+        conn_w  = 22 * mm
 
         if include_pos:
             default_cw = [2.0, 3.8, 1.0, 1.8]  # Pos | Item | Qty | Drawing
-            n_left     = 2
+            n_left = 2
         else:
-            default_cw = [5.0, 1.2, 1.8]        # Item | Qty | Drawing
-            n_left     = 1
+            default_cw = [5.0, 1.0, 1.8]        # Item | Qty | Drawing
+            n_left = 1
 
         raw_cw = settings.get('col_widths')
         if raw_cw and len(raw_cw) >= len(default_cw):
@@ -863,38 +871,35 @@ class BOMPanel(QWidget):
         else:
             cw_vals = [w * cm for w in default_cw]
 
-        left_cw_pt = cw_vals[:n_left]
-        qty_w_pt   = cw_vals[n_left]
-        drw_w_pt   = cw_vals[n_left + 1]
+        x = lm
+        xs_left = []
+        left_cw_pt = []
+        for i in range(n_left):
+            xs_left.append(x)
+            left_cw_pt.append(cw_vals[i])
+            x += cw_vals[i]
 
-        table_right = pw - rm
-        x_drw       = table_right - drw_w_pt
-        x_qty       = x_drw - qty_w_pt
+        x_desc = x
 
-        xs_left = [lm]
-        for w in left_cw_pt:
-            xs_left.append(xs_left[-1] + w)
+        qty_w_pt = cw_vals[n_left]
+        drw_w_pt = cw_vals[n_left + 1]
+        table_right  = pw - rm
+        x_drw = table_right - drw_w_pt
+        x_qty = x_drw - qty_w_pt
 
-        x_desc = xs_left[-1]           # description column starts here
-        # Full description column ends at x_qty (no separate graph col divider)
         desc_col_right = x_qty
         desc_col_w     = desc_col_right - x_desc
-
-        # Text uses the left portion; connectors use the right conn_w portion
-        desc_text_w  = desc_col_w - conn_w - 2 * mm   # usable text width
-        x_conn_zone  = desc_col_right - conn_w         # connector zone left edge
+        desc_text_w    = desc_col_w - conn_w - 2 * mm
+        x_conn_zone    = desc_col_right - conn_w
 
         if include_pos:
-            left_hdr_labels = ['Position', 'Artikel-Nr./Item No.']
+            left_hdr_labels = ['Position', 'Artikel-Nr./Item\u00a0No.']
         else:
-            left_hdr_labels = ['Artikel-Nr./Item No.']
+            left_hdr_labels = ['Artikel-Nr./Item\u00a0No.']
 
-        # ── connector spine x-positions (within conn_zone) ────────────
-        # Level 0 spine = rightmost inside zone; deeper levels step LEFT 5 mm.
         def spine_x(level: int) -> float:
             return (desc_col_right - 4 * mm) - level * 3 * mm
 
-        # Arrow tip always at left edge of connector zone
         x_arrow_tip = x_conn_zone + 1.5 * mm
 
         # ── colors ────────────────────────────────────────────────────
@@ -914,7 +919,7 @@ class BOMPanel(QWidget):
             return (text + '\u2026') if text else ''
 
         def draw_row_bg(c, row_top, depth):
-            hex_col = _DEPTH_COLORS[min(depth, len(_DEPTH_COLORS) - 1)]
+            hex_col = _DEPTH_COLOR_pdf[min(depth, len(_DEPTH_COLOR_pdf) - 1)]
             c.setFillColor(colors.HexColor(hex_col))
             c.rect(lm, row_top - row_h, table_right - lm, row_h, fill=1, stroke=0)
 
@@ -924,7 +929,6 @@ class BOMPanel(QWidget):
             c.line(x1, y1, x2, y2)
 
         def draw_arrow(c, x_spine, y):
-            """Left-pointing arrow inside connector zone."""
             ah = 1.5 * mm
             x_tip = x_arrow_tip
             if x_spine <= x_tip + ah:
@@ -941,14 +945,7 @@ class BOMPanel(QWidget):
             c.setStrokeColor(clr)
             c.circle(x, y, r, fill=1, stroke=0)
 
-        # ── FIX 2: cross-page spine continuation ──────────────────────
-        # Build a global index so we can find, for any assembly row, the
-        # global index of its last direct child anywhere in the full list.
         def build_last_child_map(all_rows):
-            """
-            Returns dict: global_row_index → global_index_of_last_direct_child
-            Only entries where a child exists are stored.
-            """
             lc_map = {}
             n = len(all_rows)
             for di in range(n):
@@ -960,7 +957,7 @@ class BOMPanel(QWidget):
                     cd = all_rows[dj]['level']
                     if cd <= depth:
                         break
-                    last_desc = dj   # any descendant, not just direct children
+                    last_desc = dj
                 if last_desc is not None:
                     lc_map[di] = last_desc
             return lc_map
@@ -968,47 +965,25 @@ class BOMPanel(QWidget):
         last_child_map = build_last_child_map(rows)
 
         def draw_connectors(c, page_rows, centers, page_start_idx):
-            """
-            Draw connectors for one page.
-
-            page_start_idx: global index in `rows` of page_rows[0].
-
-            Cross-page fix:
-              Before the normal two-pass logic, we scan all ancestor spines
-              that started on a previous page but whose last child is on this
-              page or later — those spines must be drawn from the top of the
-              page data area down to their last visible child on this page.
-            """
             n      = len(page_rows)
-            p_end  = page_start_idx + n - 1   # global idx of last row on page
+            p_end  = page_start_idx + n - 1
 
             c.saveState()
 
-            # ── Pre-pass: continue spines that cross the page boundary ──
-            # For every assembly in the GLOBAL list whose spine started
-            # before this page and whose last child is on or after this page,
-            # draw the spine segment from the top of the page to the last
-            # child visible on THIS page.
             for gi, lci in last_child_map.items():
                 if gi >= page_start_idx:
-                    continue    # parent is on this page or later — handled by Pass 1
+                    continue
                 if lci < page_start_idx:
-                    continue    # entire spine finished before this page
+                    continue
 
-                # This spine crosses onto this page.
                 depth = rows[gi]['level']
                 sx    = spine_x(depth)
                 clr   = asm_clr if depth == 0 else line_clr
 
-                # Find the last descendant of gi that appears on THIS page
                 last_on_page_local = None
                 for local_i, gr in enumerate(page_rows):
                     gi_of_row = page_start_idx + local_i
-                    # Is this row any descendant of gi?
-                    if (gr['level'] > depth and
-                            gi_of_row <= lci):
-                        # Make sure it is actually a descendant of gi
-                        # (no sibling of gi in between)
+                    if (gr['level'] > depth and gi_of_row <= lci):
                         is_desc = True
                         for mid in range(gi + 1, gi_of_row):
                             if rows[mid]['level'] <= depth:
@@ -1018,10 +993,8 @@ class BOMPanel(QWidget):
                             last_on_page_local = local_i
 
                 if last_on_page_local is None:
-                    # No direct child on this page but spine passes through —
-                    # draw from top of data area to bottom of page data area.
-                    y_from = centers[0] + row_h * 0.5   # top of first row band
-                    y_to   = centers[-1] - row_h * 0.5  # bottom of last row band
+                    y_from = centers[0] + row_h * 0.5
+                    y_to   = centers[-1] - row_h * 0.5
                 else:
                     y_from = centers[0] + row_h * 0.5
                     y_to   = centers[last_on_page_local]
@@ -1030,7 +1003,7 @@ class BOMPanel(QWidget):
                 c.setLineWidth(0.8)
                 c.line(sx, y_from, sx, y_to)
 
-            # ── Pass 1: vertical spines for parents ON this page ──────
+            # Pass 1: vertical spines for parents ON this page
             for di, row in enumerate(page_rows):
                 if not row.get('_has_bom_raw', False):
                     continue
@@ -1041,14 +1014,14 @@ class BOMPanel(QWidget):
                     cdepth = page_rows[dj]['level']
                     if cdepth <= depth:
                         break
-                    last_desc_cy = centers[dj]  # any descendant, not just direct child
+                    last_desc_cy = centers[dj]
                 if last_desc_cy is not None:
                     clr = asm_clr if depth == 0 else line_clr
                     c.setStrokeColor(clr)
                     c.setLineWidth(0.8)
                     c.line(spine_x(depth), centers[di], sx, last_desc_cy)
 
-            # ── Pass 2: arrows + dots ─────────────────────────────────
+            # Pass 2: arrows + dots
             for di, row in enumerate(page_rows):
                 depth   = row['level']
                 has_bom = row.get('_has_bom_raw', False)
@@ -1071,7 +1044,7 @@ class BOMPanel(QWidget):
         idx = 0
         while idx < len(rows):
             cap = rows_fp if not pages else rows_op
-            pages.append((idx, rows[idx: idx + cap]))   # store (start_idx, slice)
+            pages.append((idx, rows[idx: idx + cap]))
             idx += cap
         if not pages:
             pages = [(0, [])]
@@ -1083,25 +1056,34 @@ class BOMPanel(QWidget):
         for pi, (page_start_idx, page_rows) in enumerate(pages):
             is_first = (pi == 0)
 
-            # Title block (first page only)
             if is_first:
                 ty = ph - 8 * mm
+                full_name = meta.get('full_name', '').strip()
+                desc      = meta.get('description', '').strip()
+
+                line1 = f"BOM Export \u2014 {meta.get('item_no', '')}"
                 c.setFont('Helvetica-Bold', 11)
                 c.setFillColor(colors.black)
-                full_name = meta.get('full_name', '').strip()
-                title_str = (
-                        f"BOM Export \u2014 {meta.get('item_no', '')} "
-                        f"| {meta.get('description', '')}"
-                        + (f"  |  {full_name}" if full_name else '')
-                )
-                c.drawString(lm, ty, fit_text(title_str, pw - lm - rm, 'Helvetica-Bold', 11))
-                ty -= 6 * mm
+                c.drawString(lm, ty, fit_text(line1, pw - lm - rm, 'Helvetica-Bold', 11))
+                ty -= 5.5 * mm
+
+                if desc or full_name:
+                    if desc and full_name and desc != full_name:
+                        line2 = f"{desc}  |  {full_name}"
+                    else:
+                        line2 = desc or full_name
+                    c.setFont('Helvetica', 9)
+                    c.setFillColor(colors.HexColor('#333333'))
+                    c.drawString(lm, ty, fit_text(line2, pw - lm - rm, 'Helvetica', 9))
+                    ty -= 5 * mm
+
                 c.setFont('Helvetica', 8)
                 c.setFillColor(colors.HexColor('#555555'))
                 c.drawString(lm, ty,
                              f"Exported: {meta.get('exported_at', '')}  "
                              f"\u2022  Items: {meta.get('total_items', '')}")
-                hdr_top = ph - title_h
+                ty -= 4 * mm
+                hdr_top = ty
             else:
                 hdr_top = ph - 8 * mm
 
@@ -1109,16 +1091,21 @@ class BOMPanel(QWidget):
             hdr_bot = hdr_top - hdr_h
             c.setFillColor(hdr_bg_clr)
             c.rect(lm, hdr_bot, table_right - lm, hdr_h, fill=1, stroke=0)
-            hdr_y = hdr_bot + (hdr_h - fs_hdr) * 0.4
 
             def draw_hdr_label(c, text, x, max_w, y_bot, bar_h, font, size):
-                """
-                Draw header text wrapped into two lines if it doesn't fit on one.
-                y_bot = bottom of the header bar (hdr_bot). Text is vertically
-                centered inside bar_h above y_bot.
-                """
-                leading = size * 1.2
-                words   = text.split()
+                leading  = size * 1.2
+                raw_words = text.replace('\u00a0', ' ').split()
+                words = []
+                for w in raw_words:
+                    if '/' in w and stringWidth(w, font, size) > max_w - 4:
+                        parts = w.split('/')
+                        for i, p in enumerate(parts):
+                            token = p + ('/' if i < len(parts) - 1 else '')
+                            if token:
+                                words.append(token)
+                    else:
+                        words.append(w)
+
                 lines   = []
                 current = ''
                 for word in words:
@@ -1132,30 +1119,42 @@ class BOMPanel(QWidget):
                 if current:
                     lines.append(current)
                 lines = lines[:2]
+                lines = [
+                    fit_text(ln, max_w - 4, font, size)
+                    if stringWidth(ln, font, size) > max_w - 4 else ln
+                    for ln in lines
+                ]
 
                 total_h = len(lines) * leading
-                # y_bot is the baseline of the bar bottom; center text inside bar
                 y_start = y_bot + (bar_h + total_h) / 2 - leading
                 c.setFont(font, size)
                 for li, line in enumerate(lines):
                     c.drawString(x + 2, y_start - li * leading, line)
 
             c.setFillColor(colors.white)
+
             for lbl, xc, cw in zip(left_hdr_labels, xs_left, left_cw_pt):
                 draw_hdr_label(c, lbl, xc, cw, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
 
             draw_hdr_label(c, 'Bezeichnung / Designation',
                            x_desc, desc_text_w, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
-            draw_hdr_label(c, 'St.',
+            draw_hdr_label(c, 'Stück\u00a0/\u00a0Qty',
                            x_qty, qty_w_pt, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
-            draw_hdr_label(c, 'Drawing No.',
+            draw_hdr_label(c, 'Draw No.',
                            x_drw, drw_w_pt, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
 
             # ── Row y-positions ───────────────────────────────────────
+            # FIX 2: y_positions stays at geometric center (unchanged) so
+            # connector dots remain aligned. Text is nudged separately below.
             y_top       = hdr_bot
             y_positions = [y_top - (i + 0.5) * row_h for i in range(len(page_rows))]
-            centers     = [y + 0.5 for y in y_positions]
-            row_tops    = [y_top - i * row_h           for i in range(len(page_rows))]
+            centers     = y_positions[:]          # connectors use this directly
+            row_tops    = [y_top - i * row_h      for i in range(len(page_rows))]
+
+            # FIX 3: text baseline offset — moves text down from geometric
+            # center so it appears visually centered (ReportLab baselines
+            # sit above the visible text body).
+            txt_offset = fs_body * 0.3
 
             # ── Data rows ─────────────────────────────────────────────
             for i, row in enumerate(page_rows):
@@ -1173,7 +1172,7 @@ class BOMPanel(QWidget):
                 c.setFillColor(colors.black)
                 c.setFont(fnt, fs_body)
 
-                # Left cells
+                # FIX 4: apply txt_offset to all left-column cells
                 if include_pos:
                     left_vals = [
                         str(row.get('position_path') or row.get('position') or ''),
@@ -1182,31 +1181,36 @@ class BOMPanel(QWidget):
                 else:
                     left_vals = [str(row['item_no'])]
                 for val, xc, cw in zip(left_vals, xs_left, left_cw_pt):
-                    c.drawString(xc + 2, y, fit_text(val, cw - 4, fnt, fs_body))
+                    c.drawString(xc + 2, y - txt_offset,
+                                 fit_text(val, cw - 4, fnt, fs_body))
 
-                # Description — German top, English below (text in left portion only)
+                # Description — German top, English below
                 desc_de = str(row.get('description') or '').strip()
                 desc_en = str(row.get('full_name')   or '').strip()
                 if desc_de and desc_en and desc_de != desc_en:
-                    fs_en = max(fs_body - 1, 5)
+                    fs_en  = max(fs_body - 1, 5)
+                    fnt_en = 'Helvetica-BoldOblique' if depth == 0 else 'Helvetica-Oblique'
+                    # FIX 5: tightened dual-line offsets so both lines fit
+                    # within the smaller row height without overlapping
                     c.setFont(fnt, fs_body)
                     c.setFillColor(colors.black)
-                    c.drawString(x_desc + 2, y + row_h * 0.22,
+                    c.drawString(x_desc + 2, y + row_h * 0.15,
                                  fit_text(desc_de, desc_text_w, fnt, fs_body))
-                    c.setFont(fnt, fs_en)
+                    c.setFont(fnt_en, fs_en)
                     c.setFillColor(colors.HexColor('#555555'))
                     c.drawString(x_desc + 2, y - row_h * 0.28,
-                                 fit_text(desc_en, desc_text_w, fnt, fs_en))
+                                 fit_text(desc_en, desc_text_w, fnt_en, fs_en))
                     c.setFillColor(colors.black)
                     c.setFont(fnt, fs_body)
                 else:
-                    c.drawString(x_desc + 2, y,
+                    # FIX 6: single-line description also uses txt_offset
+                    c.drawString(x_desc + 2, y - txt_offset,
                                  fit_text(desc_de or desc_en, desc_text_w, fnt, fs_body))
 
-                # Right cells
-                c.drawString(x_qty + 2, y,
+                # FIX 7: apply txt_offset to right cells too
+                c.drawString(x_qty + 2, y - txt_offset,
                              fit_text(_fmt_qty(row['qty']),   qty_w_pt - 4, fnt, fs_body))
-                c.drawString(x_drw + 2, y,
+                c.drawString(x_drw + 2, y - txt_offset,
                              fit_text(str(row['scriptnum']),  drw_w_pt - 4, fnt, fs_body))
 
             # ── Outer border + vertical dividers ─────────────────────
@@ -1223,7 +1227,6 @@ class BOMPanel(QWidget):
             for xc in xs_left[1:]:
                 draw_grid_line(c, xc, hdr_top, xc, table_bot)
             draw_grid_line(c, x_desc, hdr_top, x_desc, table_bot)
-            # NO divider for x_grph — connector zone is inside description col
             draw_grid_line(c, x_qty,  hdr_top, x_qty,  table_bot)
             draw_grid_line(c, x_drw,  hdr_top, x_drw,  table_bot)
 
@@ -1231,10 +1234,11 @@ class BOMPanel(QWidget):
             if page_rows:
                 draw_connectors(c, page_rows, centers, page_start_idx)
 
-            # ── Page number ───────────────────────────────────────────
+            # ── Page number (right) + BOM number (left) ──────────────
             c.setFont('Helvetica', 7)
             c.setFillColorRGB(0.4, 0.4, 0.4)
             c.drawRightString(pw - rm, 4 * mm, f"Page {pi + 1} von {n_pages}")
+            c.drawString(lm, 4 * mm, f"BOM: {meta.get('item_no', '')}")
 
             c.showPage()
 
