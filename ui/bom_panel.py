@@ -7,7 +7,8 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QSpinBox,
-    QDoubleSpinBox, QTreeWidget, QTreeWidgetItem, QFileDialog, QMessageBox, QRadioButton
+    QDoubleSpinBox, QTreeWidget, QTreeWidgetItem, QFileDialog, QMessageBox,
+    QRadioButton, QHeaderView,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
@@ -266,6 +267,7 @@ class BOMPanel(QWidget):
         super().__init__(parent)
         self._active_loaders = []   # keep refs so GC won't kill running threads
         self._export_pending = False
+        self._expand_all_active = False  # while True, newly loaded children auto-expand
         self._setup_ui()
 
     # ------------------------------------------------------------------ setup
@@ -313,6 +315,19 @@ class BOMPanel(QWidget):
             "Unchecked → show every raw row returned by the query"
         )
 
+        self._btn_expand_all = QPushButton("Expand All")
+        self._btn_expand_all.setFixedWidth(90)
+        self._btn_expand_all.setToolTip(
+            "Expand the entire BOM tree, loading every sub-level on demand.\n"
+            "Newly loaded children are also expanded automatically."
+        )
+        self._btn_expand_all.clicked.connect(self._on_expand_all)
+
+        self._btn_collapse_all = QPushButton("Collapse All")
+        self._btn_collapse_all.setFixedWidth(95)
+        self._btn_collapse_all.setToolTip("Collapse every node in the BOM tree.")
+        self._btn_collapse_all.clicked.connect(self._on_collapse_all)
+
         self._chk_pdf_pos = QCheckBox("Include Position col (PDF)")
         self._chk_pdf_pos.setChecked(False)
         self._chk_pdf_pos.setToolTip(
@@ -331,6 +346,9 @@ class BOMPanel(QWidget):
         # --- Export bar ---
         export_bar = QHBoxLayout()
         export_bar.addWidget(self._chk_unique)
+        export_bar.addSpacing(12)
+        export_bar.addWidget(self._btn_expand_all)
+        export_bar.addWidget(self._btn_collapse_all)
         export_bar.addStretch()
         export_bar.addWidget(self._chk_pdf_pos)
         export_bar.addSpacing(12)
@@ -365,7 +383,7 @@ class BOMPanel(QWidget):
                 height: 13px;
             }}
         """)
-        self._tree.setColumnWidth(0, 55)
+        self._tree.setColumnWidth(0, 90)
         self._tree.setColumnWidth(1, 160)
         self._tree.setColumnWidth(2, 65)
         self._tree.setColumnWidth(3, 75)
@@ -381,6 +399,9 @@ class BOMPanel(QWidget):
         hdr = self._tree.header()
         hdr.setSectionsClickable(True)
         hdr.setSortIndicatorShown(True)
+        # Position grows with tree indentation so deep nodes don't clip its text
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setMinimumSectionSize(90)
         hdr.setToolTip(
             "Click a column header to sort A→Z.\n"
             "Click again to reverse (Z→A).\n"
@@ -426,6 +447,22 @@ class BOMPanel(QWidget):
     def _on_sort_indicator_changed(self, col: int, order: Qt.SortOrder):
         """Qt has already toggled the indicator — just apply the sort."""
         self._tree.sortItems(col, order)
+
+    def _on_expand_all(self):
+        """Expand every node, lazily loading and re-expanding as data arrives."""
+        if self._tree.invisibleRootItem().childCount() == 0:
+            return
+        self._expand_all_active = True
+        self._tree.expandAll()
+
+    def _on_collapse_all(self):
+        """Collapse back to the initial post-load view: root expanded with its
+        direct children visible, every deeper level collapsed."""
+        self._expand_all_active = False
+        self._tree.collapseAll()
+        root = self._tree.invisibleRootItem().child(0)
+        if root is not None:
+            root.setExpanded(True)
 
     def _on_item_expanded(self, item: QTreeWidgetItem):
         """Fired when user clicks ▶ on a tree node."""
@@ -505,6 +542,24 @@ class BOMPanel(QWidget):
 
         finally:
             self._tree.blockSignals(False)
+
+        # If "Expand All" is active, expand every newly loaded child that has
+        # a sub-BOM and directly kick off its loader. We do not rely on the
+        # itemExpanded signal here — for freshly created items inside an async
+        # callback chain, the signal cascade can be missed, leaving deep levels
+        # unloaded. Calling _start_loader explicitly guarantees every level
+        # gets fetched.
+        if self._expand_all_active:
+            for i in range(parent_item.childCount()):
+                child = parent_item.child(i)
+                if not child.data(0, _ROLE_HAS_BOM):
+                    continue
+                child.setExpanded(True)
+                if (child.childCount() == 1
+                        and child.child(0).data(0, _ROLE_ITEM_NO) == _PLACEHOLDER):
+                    child_item_no = child.data(0, _ROLE_ITEM_NO)
+                    child.removeChild(child.child(0))
+                    self._start_loader(child_item_no, child)
 
         dup_str = f"  ({dup_count} duplicate(s) hidden)" if dup_count else ""
         self._status.setText(

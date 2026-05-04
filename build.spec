@@ -3,26 +3,25 @@
 # Build with:  pyinstaller build.spec
 # Output:      dist/BOM_Explorer/BOM_Explorer.exe  (entire folder must be distributed)
 
+from PyInstaller.utils.hooks import collect_all, collect_submodules
+
 block_cipher = None
+
+# pyodbc ships a compiled .pyd; collect_all pulls the binary + any submodules
+pyodbc_datas, pyodbc_binaries, pyodbc_hidden = collect_all('pyodbc')
 
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
+    binaries=pyodbc_binaries,
+    datas=pyodbc_datas,
     hiddenimports=[
-        'pyodbc',
+        *pyodbc_hidden,
         'PyQt6.QtPrintSupport',
         'PyQt6.sip',
         'openpyxl',
         'openpyxl.cell._writer',
-        'reportlab',
-        'reportlab.graphics',
-        'reportlab.platypus',
-        'reportlab.lib.pagesizes',
-        'reportlab.lib.styles',
-        'reportlab.lib.units',
-        'reportlab.lib.colors',
+        *collect_submodules('reportlab'),
     ],
     hookspath=[],
     hooksconfig={},
