@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QTreeWidget, QTreeWidgetItem, QFileDialog, QMessageBox,
     QRadioButton, QHeaderView,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt, QRect, pyqtSignal
+from PyQt6.QtGui import QFont, QColor, QPainter, QPen
 
 from db.bom_loader import BOMLoader
 
@@ -123,6 +123,95 @@ _DEPTH_COLORS = [
 
 
 
+class CheckableHeaderView(QHeaderView):
+    """QHeaderView that paints a checkbox at the left edge of each section.
+
+    Clicking the checkbox toggles the column's check state and emits
+    `checkStateChanged(logicalIndex, checked)`. Clicking elsewhere on the
+    header still triggers the normal sort behavior.
+    """
+
+    checkStateChanged = pyqtSignal(int, bool)
+
+    _CHK_SIZE = 13
+    _CHK_PAD  = 4
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._checks: dict[int, bool] = {}
+        self.setSectionsClickable(True)
+
+    def set_checked(self, col: int, checked: bool, *, emit: bool = False):
+        prev = self._checks.get(col, True)
+        self._checks[col] = checked
+        if prev != checked:
+            self.updateSection(col)
+            if emit:
+                self.checkStateChanged.emit(col, checked)
+
+    def is_checked(self, col: int) -> bool:
+        return self._checks.get(col, True)
+
+    def _checkbox_rect(self, section_x: int, section_w: int) -> QRect:
+        h = self.height()
+        x = section_x + self._CHK_PAD
+        y = (h - self._CHK_SIZE) // 2
+        return QRect(x, y, self._CHK_SIZE, self._CHK_SIZE)
+
+    def paintSection(self, painter, rect, logicalIndex):
+        # Reserve space on the left for the checkbox by shifting the default
+        # label/sort indicator rendering to the right.
+        offset = self._CHK_SIZE + self._CHK_PAD * 2
+        shifted = QRect(rect.x() + offset, rect.y(),
+                        max(0, rect.width() - offset), rect.height())
+        super().paintSection(painter, shifted, logicalIndex)
+
+        # Re-paint the section background slice that lives under the checkbox
+        # so the default header gradient shows through there as well.
+        bg_rect = QRect(rect.x(), rect.y(), offset, rect.height())
+        opt = self.style().standardPalette()
+        painter.save()
+        painter.fillRect(bg_rect, opt.button())
+
+        chk_rect = QRect(rect.x() + self._CHK_PAD,
+                         rect.y() + (rect.height() - self._CHK_SIZE) // 2,
+                         self._CHK_SIZE, self._CHK_SIZE)
+        checked = self.is_checked(logicalIndex)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor('#FFFFFF'))
+        border = QColor('#1565C0') if checked else QColor('#888888')
+        pen = QPen(border)
+        pen.setWidthF(1.5)
+        painter.setPen(pen)
+        painter.drawRoundedRect(chk_rect, 2, 2)
+        if checked:
+            tick = QPen(QColor('#1565C0'))
+            tick.setWidthF(2.0)
+            tick.setCapStyle(Qt.PenCapStyle.RoundCap)
+            tick.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(tick)
+            r = chk_rect
+            painter.drawLine(r.x() + 3, r.y() + 7,
+                             r.x() + 5, r.y() + 9)
+            painter.drawLine(r.x() + 5, r.y() + 9,
+                             r.x() + 10, r.y() + 4)
+        painter.restore()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.pos()
+            section = self.logicalIndexAt(pos)
+            if section >= 0:
+                section_x = self.sectionViewportPosition(section)
+                hit = QRect(section_x, 0,
+                            self._CHK_SIZE + self._CHK_PAD * 2, self.height())
+                if hit.contains(pos):
+                    new_state = not self.is_checked(section)
+                    self.set_checked(section, new_state, emit=True)
+                    return  # swallow click — don't trigger sort
+        super().mousePressEvent(event)
+
+
 _DEPTH_COLOR_pdf = [
     '#FFFFFF',  # depth 0 — root
     '#FFFFFF',  # depth 1  (Δ25)
@@ -145,20 +234,19 @@ _PDF_COL_DEFS = [
 
 
 class PDFSettingsDialog(QDialog):
-    """Lets the user tweak font sizes and column widths before exporting/previewing."""
+    """Lets the user tweak font sizes and column widths before exporting/previewing.
 
-    def __init__(self, include_pos: bool, preview_callback, parent=None):
+    `cols` is a list of (label, default_width_cm) for the columns the user
+    chose to include via the BOM tree's header checkboxes.
+    """
+
+    def __init__(self, cols: list, preview_callback, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PDF Export Settings")
         self.setModal(True)
         self.setMinimumWidth(460)
-        self._include_pos = include_pos
         self._preview_cb  = preview_callback
-        self._cols = [
-            (lbl, d_pos if include_pos else d_no)
-            for lbl, d_pos, d_no in _PDF_COL_DEFS
-            if (include_pos and d_pos is not None) or (not include_pos and d_no is not None)
-        ]
+        self._cols = list(cols)
         self._build_ui()
 
     def _build_ui(self):
@@ -328,13 +416,6 @@ class BOMPanel(QWidget):
         self._btn_collapse_all.setToolTip("Collapse every node in the BOM tree.")
         self._btn_collapse_all.clicked.connect(self._on_collapse_all)
 
-        self._chk_pdf_pos = QCheckBox("Include Position col (PDF)")
-        self._chk_pdf_pos.setChecked(False)
-        self._chk_pdf_pos.setToolTip(
-            "PDF only — Checked  → include the Position column\n"
-            "           Unchecked → omit Position; gives more space to Description"
-        )
-
         top.addWidget(QLabel("Item No:"))
         top.addWidget(self._item_input, 1)
         top.addWidget(QLabel("Dataset:"))
@@ -350,8 +431,6 @@ class BOMPanel(QWidget):
         export_bar.addWidget(self._btn_expand_all)
         export_bar.addWidget(self._btn_collapse_all)
         export_bar.addStretch()
-        export_bar.addWidget(self._chk_pdf_pos)
-        export_bar.addSpacing(12)
         export_bar.addWidget(QLabel("Export:"))
         export_bar.addWidget(self._export_fmt)
         export_bar.addWidget(self._btn_export)
@@ -395,19 +474,29 @@ class BOMPanel(QWidget):
         self._tree.itemExpanded.connect(self._on_item_expanded)
         self._tree.itemChanged.connect(self._on_item_check_changed)
 
-        # ── Column-header sorting ──────────────────────────────────────
-        hdr = self._tree.header()
-        hdr.setSectionsClickable(True)
-        hdr.setSortIndicatorShown(True)
-        # Position grows with tree indentation so deep nodes don't clip its text
+        # ── Column-header sorting with checkboxes ─────────────────────
+        # Replace standard header with checkable version
+        old_hdr = self._tree.header()
+        old_hdr.deleteLater()
+        hdr = CheckableHeaderView(Qt.Orientation.Horizontal, self._tree)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setMinimumSectionSize(90)
+        hdr.setSectionsClickable(True)
+        hdr.setSortIndicatorShown(True)
         hdr.setToolTip(
             "Click a column header to sort A→Z.\n"
             "Click again to reverse (Z→A).\n"
-            "Position and Qty sort numerically."
+            "Click checkbox to include/exclude column in PDF export."
         )
         hdr.sortIndicatorChanged.connect(self._on_sort_indicator_changed)
+        hdr.checkStateChanged.connect(self._on_header_check_changed)
+        self._tree.setHeader(hdr)
+
+        # Initialize PDF-export check state per column.
+        # Position is OFF by default (gives Designation more room); the rest are ON.
+        _PDF_DEFAULT_CHECKED = {0: False, 1: True, 2: True, 3: True, 4: True, 5: True}
+        for i in range(self._tree.columnCount()):
+            hdr.set_checked(i, _PDF_DEFAULT_CHECKED.get(i, True))
 
         layout.addWidget(self._tree)
 
@@ -447,6 +536,12 @@ class BOMPanel(QWidget):
     def _on_sort_indicator_changed(self, col: int, order: Qt.SortOrder):
         """Qt has already toggled the indicator — just apply the sort."""
         self._tree.sortItems(col, order)
+
+    def _on_header_check_changed(self, col: int, checked: bool):
+        """Column header checkbox toggled. State is stored in the header
+        view itself; PDF export reads it at export time, so nothing else
+        needs to happen here. Hook is kept for future use / extension."""
+        return
 
     def _on_expand_all(self):
         """Expand every node, lazily loading and re-expanding as data arrives."""
@@ -650,9 +745,35 @@ class BOMPanel(QWidget):
 
 
 
+    def _active_pdf_cols(self) -> list[tuple[str, float, str]]:
+        """Active left/right PDF columns based on tree-header checkbox state.
+
+        Returns (dialog_label, default_width_cm, key) tuples in left→right order.
+        Designation (description / full_name) is laid out automatically and is
+        not part of this list.
+        """
+        hdr = self._tree.header()
+        show_pos  = hdr.is_checked(0)
+        show_item = hdr.is_checked(1)
+        show_qty  = hdr.is_checked(2)
+        show_drw  = hdr.is_checked(3)
+        cols: list[tuple[str, float, str]] = []
+        if show_pos:
+            cols.append(('Position', 2.0, 'pos'))
+        if show_item:
+            cols.append(('Artikel-Nr./Item No.',
+                         3.8 if show_pos else 5.0, 'item'))
+        if show_qty:
+            cols.append(('Stück / Qty',
+                         1.0 if show_pos else 1.5, 'qty'))
+        if show_drw:
+            cols.append(('Draw No.', 1.8 if show_pos else 2.5, 'drw'))
+        return cols
+
     def _export_as_pdf(self, data: dict):
         """Show PDF settings dialog (with preview), then save."""
-        include_pos = self._chk_pdf_pos.isChecked()
+        active_cols = self._active_pdf_cols()
+        dialog_cols = [(lbl, w) for (lbl, w, _key) in active_cols]
 
         def _preview(settings: dict):
             fd, tmp_path = tempfile.mkstemp(suffix='.pdf', prefix='bom_preview_')
@@ -663,7 +784,7 @@ class BOMPanel(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Preview Error", str(e))
 
-        dlg = PDFSettingsDialog(include_pos, _preview, parent=self)
+        dlg = PDFSettingsDialog(dialog_cols, _preview, parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -890,7 +1011,6 @@ class BOMPanel(QWidget):
         fs_hdr      = settings.get('header_font_size', 9)
         fs_body     = settings.get('body_font_size',   8)
         orientation = settings.get('orientation',      'landscape')
-        include_pos = self._chk_pdf_pos.isChecked()
 
         page_size = portrait(A4) if orientation == 'portrait' else landscape(A4)
         pw, ph    = page_size
@@ -913,44 +1033,85 @@ class BOMPanel(QWidget):
         # ── connector zone carved out of the RIGHT side of Designation ──
         conn_w  = 22 * mm
 
-        if include_pos:
-            default_cw = [2.0, 3.8, 1.0, 1.8]  # Pos | Item | Qty | Drawing
-            n_left = 2
-        else:
-            default_cw = [5.0, 1.0, 1.8]        # Item | Qty | Drawing
-            n_left = 1
+        # Per-column include/exclude state lives on the tree's checkable header.
+        hdr = self._tree.header()
+        show_pos  = hdr.is_checked(0)
+        show_item = hdr.is_checked(1)
+        show_qty  = hdr.is_checked(2)
+        show_draw = hdr.is_checked(3)
+        show_desc = hdr.is_checked(4)
+        show_name = hdr.is_checked(5)
 
+        # Build the column list in the *original* visual order:
+        #   [Position?] [Item No?] [Designation] [Qty?] [Draw?]
+        # Designation is auto-sized (width_cm = 0) and is included whenever
+        # Description OR Full Name is checked. Default widths track the
+        # original layout (narrower when Position is also shown, wider
+        # when Position is omitted) so dialog defaults stay consistent.
+        col_configs = []
+        if show_pos:
+            col_configs.append(('Position', 2.0, 'position_path'))
+        if show_item:
+            col_configs.append(('Artikel-Nr./Item No.',
+                                3.8 if show_pos else 5.0, 'item_no'))
+        if show_desc or show_name:
+            col_configs.append(('Bezeichnung / Designation', 0, 'description'))
+        if show_qty:
+            col_configs.append(('Stück / Qty',
+                                1.0 if show_pos else 1.5, 'qty'))
+        if show_draw:
+            col_configs.append(('Draw No.',
+                                1.8 if show_pos else 2.5, 'scriptnum'))
+
+        n_cols      = len(col_configs)
+        table_right = pw - rm
+
+        # Resolve column widths. raw_cw from the settings dialog only carries
+        # entries for fixed-width columns (Designation is auto), in the order
+        # the dialog displays them. Walk col_configs and pull the next raw_cw
+        # value for each non-auto column.
         raw_cw = settings.get('col_widths')
-        if raw_cw and len(raw_cw) >= len(default_cw):
-            cw_vals = [w * cm for w in raw_cw[:len(default_cw)]]
-        else:
-            cw_vals = [w * cm for w in default_cw]
+        cw_vals = []
+        auto_idx = -1
+        non_auto_seen = 0
+        for i, (_lbl, width_cm, _key) in enumerate(col_configs):
+            if width_cm == 0:
+                auto_idx = i
+                cw_vals.append(0)
+            else:
+                if raw_cw and non_auto_seen < len(raw_cw):
+                    cw_vals.append(raw_cw[non_auto_seen] * cm)
+                else:
+                    cw_vals.append(width_cm * cm)
+                non_auto_seen += 1
 
+        if auto_idx >= 0:
+            fixed_total = sum(cw_vals[j] for j in range(n_cols) if j != auto_idx)
+            remaining   = (table_right - lm) - fixed_total
+            cw_vals[auto_idx] = max(remaining, conn_w + 4 * mm)
+
+        xs = []
         x = lm
-        xs_left = []
-        left_cw_pt = []
-        for i in range(n_left):
-            xs_left.append(x)
-            left_cw_pt.append(cw_vals[i])
+        for i in range(n_cols):
+            xs.append(x)
             x += cw_vals[i]
 
-        x_desc = x
-
-        qty_w_pt = cw_vals[n_left]
-        drw_w_pt = cw_vals[n_left + 1]
-        table_right  = pw - rm
-        x_drw = table_right - drw_w_pt
-        x_qty = x_drw - qty_w_pt
-
-        desc_col_right = x_qty
-        desc_col_w     = desc_col_right - x_desc
-        desc_text_w    = desc_col_w - conn_w - 2 * mm
-        x_conn_zone    = desc_col_right - conn_w
-
-        if include_pos:
-            left_hdr_labels = ['Position', 'Artikel-Nr./Item\u00a0No.']
+        # Description column (if present) is assumed to be the last one
+        desc_idx = -1
+        for i, cfg in enumerate(col_configs):
+            if cfg[2] == 'description':
+                desc_idx = i
+                break
+        if desc_idx >= 0:
+            x_desc = xs[desc_idx]
+            desc_col_right = x_desc + cw_vals[desc_idx]
+            desc_text_w = cw_vals[desc_idx] - conn_w - 2 * mm
+            x_conn_zone = desc_col_right - conn_w
         else:
-            left_hdr_labels = ['Artikel-Nr./Item\u00a0No.']
+            x_desc = xs[-1] + cw_vals[-1] if xs else lm
+            desc_col_right = x_desc
+            desc_text_w = 0
+            x_conn_zone = desc_col_right
 
         def spine_x(level: int) -> float:
             return (desc_col_right - 4 * mm) - level * 3 * mm
@@ -1188,15 +1349,9 @@ class BOMPanel(QWidget):
 
             c.setFillColor(colors.white)
 
-            for lbl, xc, cw in zip(left_hdr_labels, xs_left, left_cw_pt):
-                draw_hdr_label(c, lbl, xc, cw, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
-
-            draw_hdr_label(c, 'Bezeichnung / Designation',
-                           x_desc, desc_text_w, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
-            draw_hdr_label(c, 'Stück\u00a0/\u00a0Qty',
-                           x_qty, qty_w_pt, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
-            draw_hdr_label(c, 'Draw No.',
-                           x_drw, drw_w_pt, hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
+            # Draw headers for all dynamic columns
+            for i, (lbl, _, _) in enumerate(col_configs):
+                draw_hdr_label(c, lbl, xs[i], cw_vals[i], hdr_bot, hdr_h, 'Helvetica-Bold', fs_hdr)
 
             # ── Row y-positions ───────────────────────────────────────
             # FIX 2: y_positions stays at geometric center (unchanged) so
@@ -1227,46 +1382,49 @@ class BOMPanel(QWidget):
                 c.setFillColor(colors.black)
                 c.setFont(fnt, fs_body)
 
-                # FIX 4: apply txt_offset to all left-column cells
-                if include_pos:
-                    left_vals = [
-                        str(row.get('position_path') or row.get('position') or ''),
-                        str(row['item_no']),
-                    ]
-                else:
-                    left_vals = [str(row['item_no'])]
-                for val, xc, cw in zip(left_vals, xs_left, left_cw_pt):
-                    c.drawString(xc + 2, y - txt_offset,
-                                 fit_text(val, cw - 4, fnt, fs_body))
-
-                # Description — German top, English below
-                desc_de = str(row.get('description') or '').strip()
-                desc_en = str(row.get('full_name')   or '').strip()
-                if desc_de and desc_en and desc_de != desc_en:
-                    fs_en  = max(fs_body - 1, 5)
-                    fnt_en = 'Helvetica-BoldOblique' if depth == 0 else 'Helvetica-Oblique'
-                    # FIX 5: tightened dual-line offsets so both lines fit
-                    # within the smaller row height without overlapping
-                    c.setFont(fnt, fs_body)
-                    c.setFillColor(colors.black)
-                    c.drawString(x_desc + 2, y + row_h * 0.15,
-                                 fit_text(desc_de, desc_text_w, fnt, fs_body))
-                    c.setFont(fnt_en, fs_en)
-                    c.setFillColor(colors.HexColor('#555555'))
-                    c.drawString(x_desc + 2, y - row_h * 0.28,
-                                 fit_text(desc_en, desc_text_w, fnt_en, fs_en))
-                    c.setFillColor(colors.black)
-                    c.setFont(fnt, fs_body)
-                else:
-                    # FIX 6: single-line description also uses txt_offset
-                    c.drawString(x_desc + 2, y - txt_offset,
-                                 fit_text(desc_de or desc_en, desc_text_w, fnt, fs_body))
-
-                # FIX 7: apply txt_offset to right cells too
-                c.drawString(x_qty + 2, y - txt_offset,
-                             fit_text(_fmt_qty(row['qty']),   qty_w_pt - 4, fnt, fs_body))
-                c.drawString(x_drw + 2, y - txt_offset,
-                             fit_text(str(row['scriptnum']),  drw_w_pt - 4, fnt, fs_body))
+                # Draw data cells for all dynamic columns
+                for i, (_, _, data_key) in enumerate(col_configs):
+                    xc = xs[i]
+                    cw = cw_vals[i]
+                    if data_key == 'description':
+                        # Designation cell — German (description) on top, English
+                        # (full_name) below. Each line is gated by its own
+                        # tree-header checkbox; lines also collapse when they
+                        # would be empty or duplicate the other.
+                        desc_de = str(row.get('description') or '').strip() if show_desc else ''
+                        desc_en = str(row.get('full_name')   or '').strip() if show_name else ''
+                        if desc_de and desc_en and desc_de != desc_en:
+                            fs_en  = max(fs_body - 1, 5)
+                            fnt_en = 'Helvetica-BoldOblique' if depth == 0 else 'Helvetica-Oblique'
+                            c.setFont(fnt, fs_body)
+                            c.setFillColor(colors.black)
+                            c.drawString(xc + 2, y + row_h * 0.15,
+                                         fit_text(desc_de, cw - conn_w - 4, fnt, fs_body))
+                            c.setFont(fnt_en, fs_en)
+                            c.setFillColor(colors.HexColor('#555555'))
+                            c.drawString(xc + 2, y - row_h * 0.28,
+                                         fit_text(desc_en, cw - conn_w - 4, fnt_en, fs_en))
+                            c.setFillColor(colors.black)
+                            c.setFont(fnt, fs_body)
+                        else:
+                            c.drawString(xc + 2, y - txt_offset,
+                                         fit_text(desc_de or desc_en, cw - conn_w - 4, fnt, fs_body))
+                    elif data_key == 'qty':
+                        c.drawString(xc + 2, y - txt_offset,
+                                     fit_text(_fmt_qty(row['qty']), cw - 4, fnt, fs_body))
+                    elif data_key == 'position_path':
+                        val = str(row.get('position_path') or row.get('position') or '')
+                        c.drawString(xc + 2, y - txt_offset,
+                                     fit_text(val, cw - 4, fnt, fs_body))
+                    elif data_key == 'item_no':
+                        c.drawString(xc + 2, y - txt_offset,
+                                     fit_text(str(row['item_no']), cw - 4, fnt, fs_body))
+                    elif data_key == 'scriptnum':
+                        c.drawString(xc + 2, y - txt_offset,
+                                     fit_text(str(row['scriptnum']), cw - 4, fnt, fs_body))
+                    else:
+                        c.drawString(xc + 2, y - txt_offset,
+                                     fit_text(str(row.get(data_key, '')), cw - 4, fnt, fs_body))
 
             # ── Outer border + vertical dividers ─────────────────────
             if page_rows:
@@ -1279,14 +1437,16 @@ class BOMPanel(QWidget):
             c.rect(lm, table_bot, table_right - lm, hdr_top - table_bot, fill=0, stroke=1)
 
             c.setLineWidth(0.3)
-            for xc in xs_left[1:]:
-                draw_grid_line(c, xc, hdr_top, xc, table_bot)
-            draw_grid_line(c, x_desc, hdr_top, x_desc, table_bot)
-            draw_grid_line(c, x_qty,  hdr_top, x_qty,  table_bot)
-            draw_grid_line(c, x_drw,  hdr_top, x_drw,  table_bot)
+            # Draw vertical grid lines for all column dividers
+            c.setLineWidth(0.3)
+            for i in range(1, len(xs)):
+                draw_grid_line(c, xs[i], hdr_top, xs[i], table_bot)
 
             # ── Connectors (inside Designation col right portion) ─────
-            if page_rows:
+            # Only render the tree connectors when the Designation column is
+            # actually present — otherwise the spines would bleed into the
+            # right-hand data cells.
+            if page_rows and auto_idx >= 0:
                 draw_connectors(c, page_rows, centers, page_start_idx)
 
             # ── Page number (right) + BOM number (left) ──────────────
