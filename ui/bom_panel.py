@@ -63,7 +63,7 @@ _ROLE_ITEM_NO  = Qt.ItemDataRole.UserRole          # 256 — stores item number 
 _ROLE_HAS_BOM  = Qt.ItemDataRole.UserRole + 1      # 257 — stores bool (BILLTYPE == 1)
 
 # Columns that should sort numerically (Position=0, Qty=2)
-_NUMERIC_SORT_COLS = frozenset({0, 2})
+_NUMERIC_SORT_COLS = frozenset({0, 2, 7})
 
 
 def _fmt_qty(val) -> str:
@@ -443,7 +443,8 @@ class BOMPanel(QWidget):
         # --- Tree ---
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels([
-            'Position', 'Item No', 'Qty', 'SCRIPTNUM', 'Description', 'Full Name'
+            'Position', 'Item No', 'Qty', 'SCRIPTNUM', 'Description', 'Full Name',
+            'Lagerort', 'Bestand'
         ])
         _chk_off, _chk_on = _write_indicator_svgs()
         self._tree.setStyleSheet(f"""
@@ -468,7 +469,8 @@ class BOMPanel(QWidget):
         self._tree.setColumnWidth(3, 75)
         self._tree.setColumnWidth(4, 220)
         self._tree.setColumnWidth(5, 280)
-        # self._tree.setColumnWidth(6, 70)
+        self._tree.setColumnWidth(6, 90)
+        self._tree.setColumnWidth(7, 80)
         self._tree.setAlternatingRowColors(False)   # depth shading replaces this
         self._tree.setUniformRowHeights(True)
         self._tree.itemExpanded.connect(self._on_item_expanded)
@@ -494,7 +496,7 @@ class BOMPanel(QWidget):
 
         # Initialize PDF-export check state per column.
         # Position is OFF by default (gives Designation more room); the rest are ON.
-        _PDF_DEFAULT_CHECKED = {0: False, 1: True, 2: True, 3: True, 4: True, 5: True}
+        _PDF_DEFAULT_CHECKED = {0: False, 1: True, 2: True, 3: True, 4: True, 5: True, 6: True, 7: True}
         for i in range(self._tree.columnCount()):
             hdr.set_checked(i, _PDF_DEFAULT_CHECKED.get(i, True))
 
@@ -619,6 +621,8 @@ class BOMPanel(QWidget):
                     description=str(row.get('Description') or ''),
                     full_name=str(row.get('FullName')       or ''),
                     scriptnum=str(row.get('ScriptNum') or ''),
+                    stockloc=str(row.get('StockLoc') or ''),
+                    bestand=row.get('Bestand', ''),
                 )
 
                 if has_bom:
@@ -757,6 +761,8 @@ class BOMPanel(QWidget):
         show_item = hdr.is_checked(1)
         show_qty  = hdr.is_checked(2)
         show_drw  = hdr.is_checked(3)
+        show_loc  = hdr.is_checked(6)
+        show_stk  = hdr.is_checked(7)
         cols: list[tuple[str, float, str]] = []
         if show_pos:
             cols.append(('Position', 2.0, 'pos'))
@@ -768,6 +774,10 @@ class BOMPanel(QWidget):
                          1.0 if show_pos else 1.5, 'qty'))
         if show_drw:
             cols.append(('Draw No.', 1.8 if show_pos else 2.5, 'drw'))
+        if show_loc:
+            cols.append(('Lagerort', 2.0, 'stockloc'))
+        if show_stk:
+            cols.append(('Bestand', 1.8, 'bestand'))
         return cols
 
     def _export_as_pdf(self, data: dict):
@@ -844,6 +854,8 @@ class BOMPanel(QWidget):
             'has_bom': item.data(0, _ROLE_HAS_BOM) or False,
             'description': item.text(4),
             'full_name': item.text(5),
+            'stockloc': item.text(6),
+            'bestand': item.text(7),
             'children': [],
         }
 
@@ -908,6 +920,8 @@ class BOMPanel(QWidget):
             'scriptnum': str(node.get('scriptnum') or '').strip(),
             'description': str(node.get('description') or '').strip(),
             'full_name': str(node.get('full_name') or '').strip(),
+            'stockloc': str(node.get('stockloc') or '').strip(),
+            'bestand': str(node.get('bestand') or '').strip(),
             '_has_bom_raw': bool(visible_children),
             '_depth_last': list(_depth_last),
         }
@@ -943,7 +957,7 @@ class BOMPanel(QWidget):
         ws.append([])   # blank spacer
 
         # ── Column header row ─────────────────────────────────────────
-        col_headers = ['Level', 'Position', 'Item No', 'Qty', 'SCRIPTNUM', 'Description', 'Full Name']
+        col_headers = ['Level', 'Position', 'Item No', 'Qty', 'SCRIPTNUM', 'Description', 'Full Name', 'Lagerort', 'Bestand']
         ws.append(col_headers)
         hdr_row = ws.max_row
         hdr_fill = PatternFill(fill_type='solid', fgColor='1565C0')
@@ -966,6 +980,7 @@ class BOMPanel(QWidget):
                 depth, row['position'], row['item_no'],
                 row['qty'], row['scriptnum'],
                 row['description'], row['full_name'],
+                row['stockloc'], row['bestand'],
             ])
 
             r = ws.max_row
@@ -976,7 +991,7 @@ class BOMPanel(QWidget):
                     cell.font = Font(bold=True)
 
         # ── Column widths ─────────────────────────────────────────────
-        for col_idx, width in enumerate([8, 12, 28, 10, 10, 45, 38], start=1):
+        for col_idx, width in enumerate([8, 12, 28, 10, 10, 45, 38, 12, 12], start=1):
             ws.column_dimensions[ws.cell(1, col_idx).column_letter].width = width
 
         wb.save(path)
@@ -1041,6 +1056,8 @@ class BOMPanel(QWidget):
         show_draw = hdr.is_checked(3)
         show_desc = hdr.is_checked(4)
         show_name = hdr.is_checked(5)
+        show_loc  = hdr.is_checked(6)
+        show_stk  = hdr.is_checked(7)
 
         # Build the column list in the *original* visual order:
         #   [Position?] [Item No?] [Designation] [Qty?] [Draw?]
@@ -1062,6 +1079,10 @@ class BOMPanel(QWidget):
         if show_draw:
             col_configs.append(('Draw No.',
                                 1.8 if show_pos else 2.5, 'scriptnum'))
+        if show_loc:
+            col_configs.append(('Lagerort', 2.0, 'stockloc'))
+        if show_stk:
+            col_configs.append(('Bestand', 1.8, 'bestand'))
 
         n_cols      = len(col_configs)
         table_right = pw - rm
@@ -1521,7 +1542,8 @@ class BOMPanel(QWidget):
             self._export_bom()
 
     def _make_node(self, parent, pos, item_no, qty,
-                   has_bom, description, full_name, scriptnum='') -> QTreeWidgetItem:
+                   has_bom, description, full_name, scriptnum='',
+                   stockloc='', bestand='') -> QTreeWidgetItem:
         """Create and return a properly configured QTreeWidgetItem."""
         node = _BOMTreeItem(parent)
         node.setText(0, pos)
@@ -1530,6 +1552,8 @@ class BOMPanel(QWidget):
         node.setText(3, str(scriptnum) if scriptnum else '')
         node.setText(4, description)
         node.setText(5, full_name)
+        node.setText(6, str(stockloc) if stockloc else '')
+        node.setText(7, _fmt_qty(bestand) if bestand != '' else '')
         node.setData(0, _ROLE_ITEM_NO, item_no)
         node.setData(0, _ROLE_HAS_BOM, has_bom)
         node.setFlags(node.flags() | Qt.ItemFlag.ItemIsUserCheckable)

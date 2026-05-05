@@ -38,7 +38,9 @@ class BOMLoader(QThread):
                     STOCKTABLE_1.ITEMNUMBER          AS FatherItemNo,
                     STOCKTABLE_1.ITEMNAME            AS FatherDescription,
                     TEXTS_1.TXT1                     AS FatherFullName,
-                    B407SBM_INL.SCRIPTNUM            AS ScriptNum
+                    B407SBM_INL.SCRIPTNUM            AS ScriptNum,
+                    STOCKTABLE.STOCKLOC              AS StockLoc,
+                    COALESCE(SS.Bestand, 0)          AS Bestand
                 FROM XALinl.dbo.STOCKBILLMAT STOCKBILLMAT
                 INNER JOIN XALinl.dbo.STOCKTABLE STOCKTABLE
                     ON  STOCKTABLE.DATASET       = STOCKBILLMAT.DATASET
@@ -56,6 +58,14 @@ class BOMLoader(QThread):
                     ON  B407SBM_INL.DATASET      = STOCKBILLMAT.DATASET
                     AND B407SBM_INL.LINENO_      = STOCKBILLMAT.LINENO_
                     AND B407SBM_INL.FATHERITEMNUM = STOCKBILLMAT.FATHERITEMNO
+                LEFT  JOIN (
+                    SELECT DATASET, ITEMNUMBER,
+                           SUM(ENTEREDQTY - DRAWN + RECEIVED) AS Bestand
+                    FROM XALinl.dbo.STOCKSUM
+                    GROUP BY DATASET, ITEMNUMBER
+                ) SS
+                    ON  SS.DATASET    = STOCKBILLMAT.DATASET
+                    AND SS.ITEMNUMBER = STOCKBILLMAT.CHILDITEMNO
                 WHERE STOCKBILLMAT.DATASET      = ?
                   AND STOCKBILLMAT.FATHERITEMNO = ?
                 ORDER BY STOCKBILLMAT.POSITION
