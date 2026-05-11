@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QMainWindow, QTabWidget, QMessageBox
 
 from ui.bom_panel    import BOMPanel
 from ui.search_panel import SearchPanel
+from ui.parts_panel  import PartsPanel
 
 
 class MainWindow(QMainWindow):
@@ -25,6 +26,10 @@ class MainWindow(QMainWindow):
         # --- Tab 2: Compare BOM ---
         self._search_panel = SearchPanel()
         tabs.addTab(self._search_panel, "Compare BOM")
+
+        # --- Tab 3: Parts Finder ---
+        self._parts_panel = PartsPanel()
+        tabs.addTab(self._parts_panel, "Parts Finder")
 
         self.statusBar().showMessage("Ready")
 
